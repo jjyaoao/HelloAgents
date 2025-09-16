@@ -1,55 +1,149 @@
 # HelloAgents
 
-`HelloAgents` 是一个灵活、可扩展的开源框架，旨在帮助开发者快速构建、测试和部署基于大型语言模型（LLM）的智能体（Agent）应用。无论是单个智能体、RAG（检索增强生成）应用，还是复杂的多智能体协作系统，`HelloAgents` 都提供了坚实的基础和便捷的工具。
+[![PyPI version](https://badge.fury.io/py/hello-agents.svg)](https://badge.fury.io/py/hello-agents)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 核心设计理念
+`HelloAgents` 是一个灵活、可扩展的开源多智能体框架，旨在帮助开发者快速构建、测试和部署基于大型语言模型（LLM）的智能体应用。无论是单个智能体、RAG（检索增强生成）应用，还是复杂的多智能体协作系统，`HelloAgents` 都提供了坚实的基础和便捷的工具。
 
-*   **模块化与可组合性**: 框架的核心组件（如Agent、工具、记忆）被设计为独立的模块，可以像乐高积木一样轻松组合，以适应不同的业务场景。
-*   **声明式工作流**: 通过计算图（Graph）来定义智能体的工作流程。开发者可以清晰地描述任务的执行步骤、分支逻辑和智能体之间的协作关系，使得复杂的流程易于理解和维护。
-*   **多智能体协作**: 内置对多智能体系统的支持，提供团队管理、任务路由和通信协议，方便构建能够协同解决复杂问题的智能体团队。
-*   **可扩展性**: 提供了标准化的接口，方便开发者集成自定义的语言模型、记忆模块、工具集和评估方法。
+## ✨ 核心特性
 
-## 目录结构
+- 🧠 **统一LLM接口**: 支持OpenAI、Anthropic、阿里云等主流LLM厂商
+- 🔧 **模块化设计**: 核心组件可独立使用，灵活组合
+- 🤝 **多智能体协作**: 内置多种编排模式，支持复杂协作场景
+- 📚 **上下文工程**: 先进的上下文管理和优化技术
+- 🧠 **智能记忆**: 支持工作记忆、向量记忆和RAG系统
+- 🌐 **标准协议**: 支持MCP、A2A、ANP等通信协议
+- 📊 **完整评估**: 内置多维度评估指标和基准测试
 
-项目的主要代码位于 `HelloAgents` 目录下：
+## 🚀 快速开始
 
-```
-HelloAgents/
-├── core/                  # 核心抽象和执行引擎
-│   ├── agent.py           # Agent的定义，智能体的基本单元
-│   ├── state.py           # 状态对象的定义，用于在工作流中传递信息
-│   ├── graph.py           # 工作流图的构建器，用于声明式定义任务流程
-│   ├── node.py            # 图中节点（操作单元）的定义，代表一个工作步骤
-│   └── tool.py            # 工具的基类和装饰器，方便将函数封装为Agent可用的工具
-│
-├── components/            # 可插拔的模块和实现
-│   ├── llms/              # 对接不同LLM的实现（如OpenAI, Anthropic等）
-│   ├── memory/            # 不同记忆机制的实现（如短期记忆、向量数据库记忆）
-│   ├── parsers/           # 输出解析器，用于结构化LLM的输出
-│   └── retrievers/        # 检索器（用于RAG），从外部知识源检索信息
-│
-├── teams/                 # 多智能体协作相关
-│   ├── team.py            # 智能体团队的定义，管理一组Agent
-│   ├── router.py          # 任务分发器，根据任务内容动态选择合适的Agent或工具
-│   └── communication.py   # 智能体间通信协议，定义Agent如何交换信息
-│
-├── evaluators/            # 性能与伦理评估
-│   ├── benchmark.py       # 基准测试套件，用于评估Agent的性能和准确性
-│   └── safety.py          # 安全与伦理护栏，确保Agent的输出安全无害
-│
-└── examples/              # 使用框架的具体案例
-    ├── 01_simple_assistant.py   # 一个简单的问答助手
-    ├── 02_rag_agent.py          # 一个集成了检索功能的RAG Agent
-    └── 03_multi_agent_research.py # 一个模拟研究团队进行资料搜集和报告撰写的多智能体系统
+### 安装
+
+```bash
+pip install hello-agents
 ```
 
-## 快速开始
+### 基础使用
 
-(即将推出)。。。
+```python
+from hello_agents import SimpleAgent, HelloAgentsLLM
 
-## 贡献
+# 创建LLM实例
+llm = HelloAgentsLLM(
+    model="gpt-4",
+    api_key="your-openai-api-key"
+)
 
-我们欢迎来自社区的任何贡献！无论是修复bug、增加新功能还是改进文档，都对我们非常有帮助。
+# 创建智能体
+agent = SimpleAgent(
+    name="assistant",
+    llm=llm,
+    system_prompt="你是一个有用的AI助手"
+)
+
+# 开始对话
+response = agent.run("你好，请介绍一下自己")
+print(response)
+```
+
+### 工具智能体
+
+```python
+from hello_agents import ToolAgent, HelloAgentsLLM
+from hello_agents.tools.builtin import SearchTool, CalculatorTool
+
+# 创建带工具的智能体
+agent = ToolAgent(
+    name="research_assistant",
+    llm=HelloAgentsLLM(model="gpt-4", api_key="your-key"),
+    tools=[SearchTool(), CalculatorTool()]
+)
+
+# 使用工具解决问题
+response = agent.run("帮我搜索一下2024年AI发展趋势，并计算相关数据")
+```
+
+### 多智能体协作
+
+```python
+from hello_agents.orchestration import SequentialOrchestrator
+from hello_agents import SimpleAgent, HelloAgentsLLM
+
+# 创建多个智能体
+researcher = SimpleAgent("researcher", llm, "你是一个研究员")
+writer = SimpleAgent("writer", llm, "你是一个技术写手")
+reviewer = SimpleAgent("reviewer", llm, "你是一个内容审核员")
+
+# 创建协作流程
+orchestrator = SequentialOrchestrator([researcher, writer, reviewer])
+
+# 执行协作任务
+result = orchestrator.run("写一篇关于AI Agent的技术文章")
+```
+
+## 📖 核心概念
+
+### 智能体类型
+
+- **SimpleAgent**: 基础对话智能体
+- **ToolAgent**: 支持工具调用的智能体
+- **ConversationalAgent**: 带记忆的对话智能体
+
+### 编排模式
+
+- **Sequential**: 顺序执行
+- **Parallel**: 并行执行
+- **Hierarchical**: 分层管理
+- **Debate**: 辩论模式
+- **Consensus**: 共识决策
+
+### 通信协议
+
+- **MCP**: Model Context Protocol
+- **A2A**: Agent-to-Agent Protocol
+- **ANP**: Agent Network Protocol
+
+## 🏗️ 架构设计
+
+```
+hello_agents/
+├── core/           # 核心框架
+├── agents/         # 智能体实现
+├── tools/          # 工具系统
+├── context/        # 上下文工程
+├── memory/         # 记忆系统
+├── protocols/      # 通信协议
+├── orchestration/  # 多智能体编排
+└── evaluation/     # 评估指标
+```
+
+## 📚 文档与教程
+
+- [快速开始指南](./docs/quickstart.md)
+- [API文档](./docs/api/)
+- [教程示例](./examples/)
+- [最佳实践](./docs/best_practices.md)
+
+## 🤝 贡献
+
+我们欢迎来自社区的任何贡献！
+
+1. Fork 项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+## 🙏 致谢
+
+感谢所有为这个项目做出贡献的开发者和研究者。
 
 ---
+
+**HelloAgents** - 让智能体开发变得简单而强大 🚀
 

@@ -1,39 +1,126 @@
 # HelloAgents
 
-这是一个基于 Python 的多智能体框架。
+这是一个基于 Python 的多智能体框架的核心实现。
 
 ## 目录结构
 
 ```
-HelloAgents/
-├── core/                  # 核心抽象和执行引擎
-│   ├── agent.py           # Agent的定义
-│   ├── state.py           # 状态对象的定义
-│   ├── graph.py           # 工作流图的构建器
-│   ├── node.py            # 图中节点（操作单元）的定义
-│   └── tool.py            # 工具的基类和装饰器
+hello_agents/                      # 主包目录
+├── __init__.py                    # 包初始化，导出核心API
+├── version.py                     # 版本信息
 │
-├── components/            # 可插拔的模块和实现
-│   ├── llms/              # 对接不同LLM的实现
-│   ├── memory/            # 不同记忆机制的实现
-│   ├── parsers/           # 输出解析器
-│   └── retrievers/        # 检索器（用于RAG）
+├── core/                          # 第7章：核心框架
+│   ├── __init__.py
+│   ├── agent.py                   # Agent基类
+│   ├── llm.py                     # HelloAgentsLLM统一接口
+│   ├── message.py                 # 消息系统
+│   ├── registry.py                # 全局注册中心
+│   ├── config.py                  # 配置管理
+│   └── exceptions.py              # 异常体系
 │
-├── teams/                 # 多智能体协作相关
-│   ├── team.py            # 智能体团队的定义
-│   ├── router.py          # 任务分发器
-│   └── communication.py   # 智能体间通信协议
+├── agents/                        # 第7章：Agent实现
+│   ├── __init__.py
+│   ├── simple.py                  # 简单Agent
+│   ├── tool_agent.py              # 工具Agent
+│   └── conversational.py          # 对话Agent
 │
-├── evaluators/            # 性能与伦理评估
-│   ├── benchmark.py       # 基准测试套件
-│   └── safety.py          # 安全与伦理护栏
+├── tools/                         # 第7章：工具系统
+│   ├── __init__.py
+│   ├── base.py                    # 工具基类
+│   ├── registry.py                # 工具注册
+│   └── builtin/                   # 内置工具
+│       ├── __init__.py
+│       ├── search.py
+│       ├── calculator.py
+│       └── web_browser.py
 │
-└── examples/              # 使用框架的具体案例
-    ├── 01_simple_assistant.py
-    ├── 02_rag_agent.py
-    └── 03_multi_agent_research.py
+├── context/                       # 第8章：上下文工程
+│   ├── __init__.py
+│   ├── templates.py               # 提示词模板
+│   ├── manager.py                 # 上下文管理器
+│   ├── compression.py             # 上下文压缩
+│   ├── retrieval.py               # 上下文检索
+│   └── optimization.py            # 上下文优化
+│
+├── memory/                        # 第9章：记忆与RAG
+│   ├── __init__.py
+│   ├── base.py                    # 记忆基类
+│   ├── working.py                 # 工作记忆
+│   ├── vector.py                  # 向量记忆
+│   └── rag/                       # RAG系统
+│       ├── __init__.py
+│       ├── retriever.py
+│       ├── embeddings.py
+│       └── vector_store.py
+│
+├── protocols/                     # 第10章：通信协议
+│   ├── __init__.py
+│   ├── mcp/                       # Model Context Protocol
+│   │   ├── __init__.py
+│   │   ├── client.py
+│   │   ├── server.py
+│   │   └── tools.py
+│   ├── a2a/                       # Agent-to-Agent
+│   │   ├── __init__.py
+│   │   ├── messaging.py
+│   │   └── negotiation.py
+│   └── anp/                       # Agent Network Protocol
+│       ├── __init__.py
+│       ├── discovery.py
+│       └── routing.py
+│
+├── orchestration/                 # 第11章：多智能体编排
+│   ├── __init__.py
+│   ├── sequential.py
+│   ├── parallel.py
+│   ├── hierarchical.py
+│   ├── debate.py
+│   └── consensus.py
+│
+├── evaluation/                    # 第12章：评估指标
+│   ├── __init__.py
+│   ├── metrics/
+│   │   ├── __init__.py
+│   │   ├── accuracy.py
+│   │   ├── efficiency.py
+│   │   ├── robustness.py
+│   │   └── collaboration.py
+│   ├── benchmarks/
+│   │   ├── __init__.py
+│   │   ├── single_agent.py
+│   │   └── multi_agent.py
+│   └── reporting.py
+│
+└── utils/                         # 通用工具
+    ├── __init__.py
+    ├── logging.py
+    ├── serialization.py
+    └── helpers.py
+```
+
+## 核心API
+
+```python
+# 从包中导入核心组件
+from hello_agents import (
+    SimpleAgent, ToolAgent, ConversationalAgent,
+    HelloAgentsLLM, Tool, ToolRegistry,
+    WorkingMemory, VectorMemory,
+    SequentialOrchestrator, ParallelOrchestrator
+)
 ```
 
 ## 快速开始
 
-(即将推出)
+```python
+from hello_agents import SimpleAgent, HelloAgentsLLM
+
+# 创建LLM
+llm = HelloAgentsLLM(model="gpt-4", api_key="your-key")
+
+# 创建Agent
+agent = SimpleAgent(name="assistant", llm=llm)
+
+# 使用
+response = agent.run("Hello, world!")
+```

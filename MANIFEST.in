@@ -1,0 +1,19 @@
+# 包含额外文件到分发包中
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+
+# 包含文档
+recursive-include docs *.md *.rst *.txt
+
+# 包含示例（可选）
+recursive-include examples *.py *.md
+
+# 排除不需要的文件
+exclude .gitignore
+exclude .env*
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude tests *
