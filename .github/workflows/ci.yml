@@ -34,14 +34,14 @@ jobs:
       run: |
         python -c "
         from hello_agents.tools import ToolRegistry
-        
+
         # 测试工具注册功能
         registry = ToolRegistry()
         def test_func(x): return f'test: {x}'
         registry.register_function('test', 'test function', test_func)
-        
-        # 测试工具调用
-        result = registry.call_function('test', {'input': 'hello'})
+
+        # 测试工具调用（使用正确的方法名）
+        result = registry.execute_tool('test', 'hello')
         assert 'test: hello' in result
         print('✅ 基础功能测试通过')
         "
