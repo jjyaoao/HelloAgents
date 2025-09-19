@@ -1,8 +1,7 @@
-"""网页浏览工具"""
+"""网页浏览工具 - 纯Python实现"""
 
 import requests
 from bs4 import BeautifulSoup
-from langchain_core.tools import tool
 
 from ..base import Tool
 from ...core.exceptions import ToolException
@@ -16,16 +15,20 @@ class WebBrowserTool(Tool):
             description="浏览指定URL的网页内容，提取文本信息。"
         )
     
-    def run(self, url: str) -> str:
+    def run(self, parameters: dict) -> str:
         """
         浏览网页
         
         Args:
-            url: 网页URL
+            parameters: 包含url参数的字典
             
         Returns:
             网页文本内容
         """
+        url = parameters.get("url", "")
+        if not url:
+            raise ToolException("URL不能为空")
+        
         try:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -54,14 +57,26 @@ class WebBrowserTool(Tool):
             return text
         except Exception as e:
             raise ToolException(f"网页浏览失败: {str(e)}")
+    
+    def get_parameters(self):
+        """获取工具参数定义"""
+        from ..base import ToolParameter
+        return [
+            ToolParameter(
+                name="url",
+                type="string",
+                description="要浏览的网页URL",
+                required=True
+            )
+        ]
 
-@tool
+# 便捷函数
 def browse_web(url: str) -> str:
     """
-    浏览指定URL的网页内容，提取文本信息。
+    浏览指定URL的网页内容
     
     Args:
-        url (str): 要浏览的网页URL
+        url: 网页URL
     """
     tool = WebBrowserTool()
-    return tool.run(url)
+    return tool.run({"url": url})

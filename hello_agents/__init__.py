@@ -1,45 +1,53 @@
 """
 HelloAgents - 灵活、可扩展的多智能体框架
 
-这是一个基于Python的多智能体框架，旨在帮助开发者快速构建、测试和部署
-基于大型语言模型（LLM）的智能体应用。
+基于OpenAI原生API构建，提供简洁高效的智能体开发体验。
 """
 
-from .version import __version__
+from .version import __version__, __author__, __email__, __description__
 
-# 核心导出，用户友好的API
-from .core.agent import Agent
+# 核心组件
 from .core.llm import HelloAgentsLLM
-from .core.message import Message
 from .core.config import Config
+from .core.message import Message
+from .core.exceptions import HelloAgentsException
 
-# 常用Agent类型
-from .agents.simple import SimpleAgent
-from .agents.tool_agent import ToolAgent
-from .agents.conversational import ConversationalAgent
+# Agent实现
+from .agents.simple_agent import SimpleAgent
+from .agents.react_agent import ReActAgent
+from .agents.reflection_agent import ReflectionAgent
+from .agents.plan_solve_agent import PlanAndSolveAgent
 
 # 工具系统
-from .tools.base import Tool
-from .tools.registry import ToolRegistry
-
-# 记忆系统
-from .memory.working import WorkingMemory
-from .memory.vector import VectorMemory
-
-# 编排系统
-from .orchestration.sequential import SequentialOrchestrator
-from .orchestration.parallel import ParallelOrchestrator
+from .tools.registry import ToolRegistry, global_registry
+from .tools.builtin.search import SearchTool, search
+from .tools.builtin.calculator import CalculatorTool, calculate
 
 __all__ = [
+    # 版本信息
     "__version__",
+    "__author__",
+    "__email__",
+    "__description__",
+
     # 核心组件
-    "Agent", "HelloAgentsLLM", "Message", "Config",
-    # Agent类型
-    "SimpleAgent", "ToolAgent", "ConversationalAgent", 
+    "HelloAgentsLLM",
+    "Config",
+    "Message",
+    "HelloAgentsException",
+
+    # Agent范式
+    "SimpleAgent",
+    "ReActAgent",
+    "ReflectionAgent",
+    "PlanAndSolveAgent",
+
     # 工具系统
-    "Tool", "ToolRegistry",
-    # 记忆系统
-    "WorkingMemory", "VectorMemory",
-    # 编排系统
-    "SequentialOrchestrator", "ParallelOrchestrator"
+    "ToolRegistry",
+    "global_registry",
+    "SearchTool",
+    "search",
+    "CalculatorTool",
+    "calculate",
 ]
+

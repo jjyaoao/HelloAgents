@@ -1,4 +1,4 @@
-"""异常体系"""
+"""异常体系 - 纯Python实现"""
 
 class HelloAgentsException(Exception):
     """HelloAgents基础异常类"""
@@ -12,14 +12,10 @@ class AgentException(HelloAgentsException):
     """Agent相关异常"""
     pass
 
+class ConfigException(HelloAgentsException):
+    """配置相关异常"""
+    pass
+
 class ToolException(HelloAgentsException):
     """工具相关异常"""
-    pass
-
-class MemoryException(HelloAgentsException):
-    """记忆相关异常"""
-    pass
-
-class OrchestrationException(HelloAgentsException):
-    """编排相关异常"""
     pass

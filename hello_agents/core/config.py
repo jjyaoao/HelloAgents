@@ -1,42 +1,35 @@
-"""配置管理"""
+"""配置管理 - 纯Python实现"""
 
 import os
-from typing import Dict, Any, Optional
-from dataclasses import dataclass, field
+from typing import Optional, Dict, Any
+from pydantic import BaseModel
 
-@dataclass
-class Config:
+class Config(BaseModel):
     """HelloAgents配置类"""
     
     # LLM配置
-    default_provider: str = "deepseek"
-    default_model: Optional[str] = None
+    default_model: str = "gpt-3.5-turbo"
+    default_provider: str = "openai"
+    temperature: float = 0.7
+    max_tokens: Optional[int] = None
     
-    # API密钥
-    openai_api_key: Optional[str] = field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
-    deepseek_api_key: Optional[str] = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY"))
-    dashscope_api_key: Optional[str] = field(default_factory=lambda: os.getenv("DASHSCOPE_API_KEY"))
-    tavily_api_key: Optional[str] = field(default_factory=lambda: os.getenv("TAVILY_API_KEY"))
-    
-    # 其他配置
+    # 系统配置
     debug: bool = False
     log_level: str = "INFO"
     
-    # 自定义配置
-    custom_config: Dict[str, Any] = field(default_factory=dict)
+    # 其他配置
+    max_history_length: int = 100
     
     @classmethod
     def from_env(cls) -> "Config":
         """从环境变量创建配置"""
-        return cls()
+        return cls(
+            debug=os.getenv("DEBUG", "false").lower() == "true",
+            log_level=os.getenv("LOG_LEVEL", "INFO"),
+            temperature=float(os.getenv("TEMPERATURE", "0.7")),
+            max_tokens=int(os.getenv("MAX_TOKENS")) if os.getenv("MAX_TOKENS") else None,
+        )
     
-    def get(self, key: str, default: Any = None) -> Any:
-        """获取配置值"""
-        return getattr(self, key, self.custom_config.get(key, default))
-    
-    def set(self, key: str, value: Any) -> None:
-        """设置配置值"""
-        if hasattr(self, key):
-            setattr(self, key, value)
-        else:
-            self.custom_config[key] = value
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return self.dict()

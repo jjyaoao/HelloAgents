@@ -3,4 +3,4 @@
 __version__ = "0.1.0"
 __author__ = "HelloAgents Team"
 __email__ = "jjyaoao@126.com"
-__description__ = "灵活、可扩展的多智能体框架"
+__description__ = "灵活、可扩展的多智能体框架 - 基于Datawhale Hello-Agents教程"

@@ -1,26 +1,33 @@
 """消息系统"""
 
-from typing import TypedDict, Annotated, List
-from langchain_core.messages import BaseMessage
-import operator
+from typing import Optional, Dict, Any, Literal
+from datetime import datetime
+from pydantic import BaseModel
 
-class Message:
-    """消息基类"""
-    
-    def __init__(self, content: str, role: str = "user"):
-        self.content = content
-        self.role = role
-    
-    def __str__(self):
-        return f"{self.role}: {self.content}"
+MessageRole = Literal["user", "assistant", "system", "tool"]
 
-class BaseAgentState(TypedDict):
-    """
-    定义了所有Agent共享的基础状态结构。
-    在构建具体Agent时，你的自定义State应该包含此结构或直接继承它。
-    """
-    # `messages` 字段用于存储整个对话历史。
-    # `Annotated[..., operator.add]` 是一个关键的LangGraph语法：
-    # 它告诉图，当节点返回'messages'时，应将新消息追加(add)到现有列表中，
-    # operator.add 使得messages列表在图的流转中是追加(add)而不是覆盖(overwrite)
-    messages: Annotated[List[BaseMessage], operator.add]
+class Message(BaseModel):
+    """消息类"""
+    
+    content: str
+    role: MessageRole
+    timestamp: datetime = None
+    metadata: Optional[Dict[str, Any]] = None
+    
+    def __init__(self, content: str, role: MessageRole, **kwargs):
+        super().__init__(
+            content=content,
+            role=role,
+            timestamp=kwargs.get('timestamp', datetime.now()),
+            metadata=kwargs.get('metadata', {})
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式（OpenAI API格式）"""
+        return {
+            "role": self.role,
+            "content": self.content
+        }
+    
+    def __str__(self) -> str:
+        return f"[{self.role}] {self.content}"
