@@ -1,0 +1,52 @@
+name: Simple CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    
+    - name: Install package
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+    
+    - name: Test imports
+      run: |
+        python -c "
+        from hello_agents import HelloAgentsLLM, SimpleAgent, ReActAgent, ReflectionAgent, PlanAndSolveAgent
+        from hello_agents.tools import ToolRegistry
+        print('✅ 所有核心组件导入成功')
+        "
+    
+    - name: Test basic functionality
+      run: |
+        python -c "
+        from hello_agents.tools import ToolRegistry
+        
+        # 测试工具注册功能
+        registry = ToolRegistry()
+        def test_func(x): return f'test: {x}'
+        registry.register_function('test', 'test function', test_func)
+        
+        # 测试工具调用
+        result = registry.call_function('test', {'input': 'hello'})
+        assert 'test: hello' in result
+        print('✅ 基础功能测试通过')
+        "
+    
+    - name: Check Python syntax
+      run: |
+        python -m py_compile hello_agents/**/*.py
+        echo "✅ Python语法检查通过"

@@ -263,7 +263,7 @@ hello-agents/
 - **[Datawhale Hello-Agents 教程](https://github.com/datawhalechina/hello-agents)** - 原版教程
 
 ### 示例代码
-- **[基础示例](./examples/)** - 从入门到进阶的完整示例
+
 - **[快速开始](./examples/chapter07_basic_setup.py)** - 立即体验
 
 ---
