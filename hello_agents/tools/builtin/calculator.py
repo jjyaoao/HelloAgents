@@ -1,4 +1,4 @@
-"""计算器工具 - 纯Python实现"""
+"""计算器工具"""
 
 import ast
 import operator

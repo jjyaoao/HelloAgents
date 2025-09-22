@@ -1,4 +1,4 @@
-"""配置管理 - 纯Python实现"""
+"""配置管理"""
 
 import os
 from typing import Optional, Dict, Any

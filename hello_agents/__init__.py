@@ -22,6 +22,8 @@ from .agents.plan_solve_agent import PlanAndSolveAgent
 from .tools.registry import ToolRegistry, global_registry
 from .tools.builtin.search import SearchTool, search
 from .tools.builtin.calculator import CalculatorTool, calculate
+from .tools.chain import ToolChain, ToolChainManager
+from .tools.async_executor import AsyncToolExecutor
 
 __all__ = [
     # 版本信息
@@ -49,5 +51,8 @@ __all__ = [
     "search",
     "CalculatorTool",
     "calculate",
+    "ToolChain",
+    "ToolChainManager",
+    "AsyncToolExecutor",
 ]
 

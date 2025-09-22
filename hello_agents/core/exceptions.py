@@ -1,4 +1,4 @@
-"""异常体系 - 纯Python实现"""
+"""异常体系"""
 
 class HelloAgentsException(Exception):
     """HelloAgents基础异常类"""

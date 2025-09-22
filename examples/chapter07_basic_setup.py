@@ -29,7 +29,8 @@ load_dotenv()
 from hello_agents import (
     HelloAgentsLLM,
     SimpleAgent, ReActAgent, ReflectionAgent, PlanAndSolveAgent,
-    ToolRegistry, search, calculate
+    ToolRegistry, search, calculate,
+    ToolChain, ToolChainManager, AsyncToolExecutor
 )
 
 def demo_simple_agent():
@@ -415,6 +416,65 @@ def interactive_demo():
 
     print("\n👋 再见！")
 
+def demo_advanced_features():
+    """演示高级功能：工具链和异步执行"""
+    print("\n" + "="*60)
+    print("🚀 高级功能演示 - 工具链和异步执行")
+    print("="*60)
+
+    # 创建工具注册表
+    registry = ToolRegistry()
+    registry.register_function("calculate", "数学计算工具", calculate)
+
+    # 1. 工具链演示
+    print("\n--- 工具链演示 ---")
+
+    # 创建简单的工具链
+    chain = ToolChain("demo_chain", "演示工具链")
+    chain.add_step("calculate", "2 + 3", "step1")
+    chain.add_step("calculate", "5 * 2", "step2")
+
+    # 创建工具链管理器
+    chain_manager = ToolChainManager(registry)
+    chain_manager.register_chain(chain)
+
+    # 执行工具链
+    print("🔗 执行工具链...")
+    result = chain_manager.execute_chain("demo_chain", "开始")
+    print(f"✅ 工具链结果: {result}")
+
+    # 2. 异步执行演示
+    print("\n--- 异步执行演示 ---")
+
+    import asyncio
+
+    async def async_demo():
+        # 创建异步执行器
+        executor = AsyncToolExecutor(registry, max_workers=2)
+
+        # 定义并行任务
+        tasks = [
+            {"tool_name": "calculate", "input_data": "10 + 5"},
+            {"tool_name": "calculate", "input_data": "20 * 3"},
+            {"tool_name": "calculate", "input_data": "100 / 4"},
+        ]
+
+        print("⚡ 并行执行多个计算任务...")
+        results = await executor.execute_tools_parallel(tasks)
+
+        print("📊 并行执行结果:")
+        for result in results:
+            status = "✅" if result["status"] == "success" else "❌"
+            print(f"{status} {result['input_data']} = {result['result']}")
+
+        executor.close()
+
+    # 运行异步演示
+    try:
+        asyncio.run(async_demo())
+    except Exception as e:
+        print(f"❌ 异步执行错误: {e}")
+
 def main():
     """主函数"""
     print("🚀 HelloAgents 框架完整演示")
@@ -423,7 +483,8 @@ def main():
     print("1. 四种Agent范式的默认配置使用")
     print("2. 自定义配置的高级用法")
     print("3. 默认 vs 自定义配置的对比")
-    print("4. 交互式Agent体验")
+    print("4. 高级功能：工具链和异步执行")
+    print("5. 交互式Agent体验")
 
     try:
         # 1. SimpleAgent演示
@@ -441,7 +502,10 @@ def main():
         # 5. 自定义 vs 默认配置对比
         demo_custom_vs_default()
 
-        # 6. 交互式演示
+        # 6. 高级功能演示
+        demo_advanced_features()
+
+        # 7. 交互式演示
         interactive_demo()
 
         print("\n" + "="*60)

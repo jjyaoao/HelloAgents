@@ -1,4 +1,4 @@
-"""工具基类 - 纯Python实现"""
+"""工具基类"""
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List

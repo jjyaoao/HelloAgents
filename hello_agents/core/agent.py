@@ -1,4 +1,4 @@
-"""Agent基类 - 移除LangChain依赖"""
+"""Agent基类"""
 
 from abc import ABC, abstractmethod
 from typing import Optional, Any

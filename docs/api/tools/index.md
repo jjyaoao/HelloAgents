@@ -340,6 +340,98 @@ class SafeCalculatorTool(Tool):
 6. **安全性**：避免执行不安全的代码（如eval）
 7. **性能**：对于耗时操作，考虑添加超时机制
 
+## 高级功能
+
+### 工具链式调用
+
+工具链允许将多个工具按顺序组合执行，实现复杂的工作流程。
+
+```python
+from hello_agents import ToolRegistry, ToolChain, ToolChainManager
+
+# 创建工具注册表
+registry = ToolRegistry()
+registry.register_function("search", "搜索工具", search_function)
+registry.register_function("calculate", "计算工具", calculate_function)
+
+# 创建工具链
+chain = ToolChain("research_chain", "研究和计算工具链")
+chain.add_step("search", "{input}", "search_result")
+chain.add_step("calculate", "2 + 2", "calc_result")
+
+# 创建工具链管理器
+chain_manager = ToolChainManager(registry)
+chain_manager.register_chain(chain)
+
+# 执行工具链
+result = chain_manager.execute_chain("research_chain", "Python编程")
+print(result)
+```
+
+**ToolChain API:**
+- `ToolChain(name, description)` - 创建工具链
+- `add_step(tool_name, input_template, output_key)` - 添加执行步骤
+- `execute(registry, input_data, context)` - 执行工具链
+
+**ToolChainManager API:**
+- `ToolChainManager(registry)` - 创建管理器
+- `register_chain(chain)` - 注册工具链
+- `execute_chain(chain_name, input_data, context)` - 执行工具链
+- `list_chains()` - 列出所有工具链
+- `get_chain_info(chain_name)` - 获取工具链信息
+
+### 异步工具执行
+
+支持并行执行多个工具，提高执行效率。
+
+```python
+import asyncio
+from hello_agents import ToolRegistry, AsyncToolExecutor
+
+# 创建工具注册表
+registry = ToolRegistry()
+registry.register_function("calculate", "计算工具", calculate)
+
+# 异步执行单个工具
+async def single_async_example():
+    executor = AsyncToolExecutor(registry)
+    result = await executor.execute_tool_async("calculate", "2 + 3")
+    print(result)
+    executor.close()
+
+# 并行执行多个工具
+async def parallel_example():
+    executor = AsyncToolExecutor(registry, max_workers=4)
+
+    tasks = [
+        {"tool_name": "calculate", "input_data": "2 + 2"},
+        {"tool_name": "calculate", "input_data": "3 * 4"},
+        {"tool_name": "calculate", "input_data": "10 / 2"},
+    ]
+
+    results = await executor.execute_tools_parallel(tasks)
+    for result in results:
+        print(f"{result['tool_name']}({result['input_data']}) = {result['result']}")
+
+    executor.close()
+
+# 运行异步示例
+asyncio.run(parallel_example())
+```
+
+**AsyncToolExecutor API:**
+- `AsyncToolExecutor(registry, max_workers)` - 创建异步执行器
+- `execute_tool_async(tool_name, input_data)` - 异步执行单个工具
+- `execute_tools_parallel(tasks)` - 并行执行多个工具
+- `execute_tools_batch(tool_name, input_list)` - 批量执行同一工具
+- `close()` - 关闭执行器
+
+**便捷函数:**
+- `run_parallel_tools(registry, tasks, max_workers)` - 异步并行执行
+- `run_batch_tool(registry, tool_name, input_list, max_workers)` - 异步批量执行
+- `run_parallel_tools_sync(registry, tasks, max_workers)` - 同步版本的并行执行
+- `run_batch_tool_sync(registry, tool_name, input_list, max_workers)` - 同步版本的批量执行
+
 ## 完整示例
 
 ```python
