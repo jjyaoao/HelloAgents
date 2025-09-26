@@ -1,0 +1,239 @@
+{
+  "demo_settings": {
+    "name": "统一多模态智能体演示",
+    "version": "1.0.0",
+    "description": "展示Memory + RAG + Vision + Video的综合能力"
+  },
+  
+  "llm_config": {
+    "provider": "openai",
+    "model": "gpt-3.5-turbo",
+    "temperature": 0.7,
+    "max_tokens": 2000
+  },
+  
+  "memory_config": {
+    "user_id": "demo_user",
+    "memory_types": ["working", "episodic", "semantic", "perceptual"],
+    "working_memory_capacity": 10,
+    "importance_threshold": 0.3,
+    "decay_factor": 0.95
+  },
+  
+  "rag_config": {
+    "knowledge_base_path": "./unified_knowledge_base",
+    "embedding_model": "sentence-transformers",
+    "retrieval_strategy": "vector",
+    "chunk_size": 500,
+    "chunk_overlap": 50,
+    "top_k": 3,
+    "min_score": 0.1
+  },
+  
+  "vision_config": {
+    "api_provider": "openai",
+    "api_key": null,
+    "default_sample_type": "nature",
+    "supported_formats": ["jpg", "jpeg", "png", "webp"],
+    "max_image_size": "2MB",
+    "analysis_features": {
+      "object_detection": true,
+      "scene_classification": true,
+      "color_analysis": true,
+      "composition_analysis": true,
+      "mood_detection": true,
+      "text_extraction": true
+    }
+  },
+  
+  "video_config": {
+    "supported_formats": ["mp4", "avi", "mov", "webm"],
+    "max_duration": "30:00",
+    "keyframe_interval": 30,
+    "analysis_features": {
+      "content_analysis": true,
+      "keyframe_extraction": true,
+      "audio_analysis": true,
+      "visual_elements": true,
+      "engagement_metrics": true
+    }
+  },
+  
+  "sample_resources": {
+    "images": {
+      "architecture": {
+        "url": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800",
+        "description": "现代建筑摄影",
+        "tags": ["建筑", "现代", "玻璃", "城市"],
+        "license": "Unsplash License"
+      },
+      "nature": {
+        "url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
+        "description": "自然风景照片", 
+        "tags": ["自然", "山脉", "湖泊", "风景"],
+        "license": "Unsplash License"
+      },
+      "technology": {
+        "url": "https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=800",
+        "description": "科技产品图片",
+        "tags": ["科技", "电脑", "编程", "代码"],
+        "license": "Unsplash License"
+      },
+      "food": {
+        "url": "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=800",
+        "description": "美食摄影",
+        "tags": ["美食", "披萨", "餐厅", "意大利"],
+        "license": "Unsplash License"
+      }
+    },
+    
+    "videos": {
+      "python_tutorial": {
+        "title": "Python编程基础教程",
+        "description": "适合初学者的Python编程入门课程",
+        "duration": "18:45",
+        "topics": ["Python语法", "变量", "函数", "循环"],
+        "difficulty": "初级",
+        "url": "https://example.com/python_tutorial.mp4",
+        "license": "Creative Commons"
+      },
+      "ai_introduction": {
+        "title": "人工智能入门介绍", 
+        "description": "AI基础概念和应用领域介绍",
+        "duration": "25:30",
+        "topics": ["机器学习", "深度学习", "神经网络", "应用案例"],
+        "difficulty": "中级",
+        "url": "https://example.com/ai_intro.mp4",
+        "license": "Creative Commons"
+      },
+      "computer_vision": {
+        "title": "计算机视觉原理",
+        "description": "深入讲解计算机视觉的核心技术",
+        "duration": "32:15",
+        "topics": ["图像处理", "特征提取", "目标检测", "深度学习"],
+        "difficulty": "高级",
+        "url": "https://example.com/cv_principles.mp4",
+        "license": "Creative Commons"
+      }
+    }
+  },
+  
+  "demo_scenarios": {
+    "basic_interaction": {
+      "name": "基础交互演示",
+      "description": "展示基本的对话和记忆功能",
+      "steps": [
+        {
+          "type": "introduction",
+          "content": "你好！我是张同学，正在学习人工智能。",
+          "expected_actions": ["memory_store", "greeting_response"]
+        },
+        {
+          "type": "knowledge_query",
+          "content": "什么是机器学习？",
+          "expected_actions": ["rag_search", "knowledge_response"]
+        }
+      ]
+    },
+    
+    "multimodal_analysis": {
+      "name": "多模态分析演示",
+      "description": "展示图片和视频分析能力",
+      "steps": [
+        {
+          "type": "image_analysis",
+          "content": "请分析一张建筑图片",
+          "expected_actions": ["vision_download", "vision_analyze", "memory_store"]
+        },
+        {
+          "type": "video_analysis", 
+          "content": "找一个Python教学视频",
+          "expected_actions": ["video_search", "video_analyze", "rag_add"]
+        }
+      ]
+    },
+    
+    "personalized_learning": {
+      "name": "个性化学习演示",
+      "description": "展示基于记忆的个性化服务",
+      "steps": [
+        {
+          "type": "profile_building",
+          "content": "我是初学者，想学习Python和AI",
+          "expected_actions": ["memory_store", "profile_create"]
+        },
+        {
+          "type": "recommendation",
+          "content": "根据我的情况推荐学习资源",
+          "expected_actions": ["memory_recall", "rag_search", "personalized_response"]
+        }
+      ]
+    }
+  },
+  
+  "performance_benchmarks": {
+    "response_time_targets": {
+      "memory_operations": "< 0.5s",
+      "rag_search": "< 2.0s", 
+      "image_analysis": "< 5.0s",
+      "video_analysis": "< 3.0s",
+      "complex_reasoning": "< 10.0s"
+    },
+    
+    "accuracy_targets": {
+      "memory_recall": "> 90%",
+      "knowledge_retrieval": "> 85%",
+      "image_understanding": "> 80%",
+      "video_content_extraction": "> 75%"
+    }
+  },
+  
+  "ui_settings": {
+    "console_colors": {
+      "user_input": "cyan",
+      "agent_response": "green", 
+      "system_info": "yellow",
+      "error_message": "red",
+      "success_message": "bright_green"
+    },
+    
+    "display_options": {
+      "show_thinking_process": true,
+      "show_tool_calls": true,
+      "show_performance_metrics": false,
+      "show_memory_stats": true,
+      "animation_enabled": true
+    }
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "file_path": "./logs/unified_demo.log",
+    "max_file_size": "10MB",
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  
+  "experimental_features": {
+    "real_api_integration": {
+      "enabled": false,
+      "openai_vision": false,
+      "google_vision": false,
+      "azure_cognitive": false
+    },
+    
+    "advanced_memory": {
+      "enabled": false,
+      "memory_consolidation": false,
+      "cross_session_memory": false,
+      "memory_visualization": false
+    },
+    
+    "multimodal_rag": {
+      "enabled": false,
+      "image_to_text_indexing": false,
+      "video_transcript_search": false,
+      "cross_modal_retrieval": false
+    }
+  }
+}

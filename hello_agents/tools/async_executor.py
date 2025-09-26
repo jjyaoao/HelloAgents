@@ -2,7 +2,7 @@
 
 import asyncio
 import concurrent.futures
-from typing import Dict, Any, List, Callable, Optional
+from typing import Dict, Any, List
 from .registry import ToolRegistry
 
 

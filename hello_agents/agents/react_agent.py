@@ -1,7 +1,7 @@
 """ReAct Agent实现 - 推理与行动结合的智能体"""
 
 import re
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Tuple
 from ..core.agent import Agent
 from ..core.llm import HelloAgentsLLM
 from ..core.config import Config

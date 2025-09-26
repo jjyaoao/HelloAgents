@@ -2,7 +2,7 @@
 
 import json
 import pickle
-from typing import Any, Dict, Union
+from typing import Any, Union
 from pathlib import Path
 
 def serialize_object(obj: Any, format: str = "json") -> Union[str, bytes]:

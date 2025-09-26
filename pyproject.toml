@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hello-agents"
-version = "0.1.1"
+version = "0.1.2"
 description = "灵活、可扩展的多智能体框架 - 基于OpenAI原生API"
 readme = "README.md"
 license = {text = "CC-BY-NC-SA-4.0"}
@@ -23,6 +23,10 @@ dependencies = [
 
     # 可选的工具依赖
     "beautifulsoup4>=4.9.0",
+
+    # 记忆和RAG基础依赖
+    "numpy>=1.21.0",
+    "networkx>=2.6.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +34,34 @@ search = [
     "tavily-python>=0.3.0",
     "serpapi>=0.1.0",
 ]
+
+# 记忆系统依赖
+memory = [
+    "chromadb>=0.4.0",
+    "sqlite3",  # 通常内置于Python
+]
+
+# RAG系统依赖 - 分层级提供选择
+rag-basic = [
+    "scikit-learn>=1.0.0",  # TF-IDF支持
+]
+
+rag-standard = [
+    "hello-agents[rag-basic]",
+    "transformers>=4.20.0",
+    "torch>=1.12.0",
+]
+
+rag-premium = [
+    "hello-agents[rag-standard]",
+    "sentence-transformers>=2.2.0",
+]
+
+# 完整记忆和RAG功能
+memory-rag = [
+    "hello-agents[memory,rag-premium]",
+]
+
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -38,7 +70,8 @@ dev = [
     "flake8>=4.0.0",
     "mypy>=0.950",
 ]
-all = ["hello-agents[search,dev]"]
+
+all = ["hello-agents[search,memory-rag,dev]"]
 
 [project.urls]
 Homepage = "https://github.com/jjyaoao/HelloAgents"

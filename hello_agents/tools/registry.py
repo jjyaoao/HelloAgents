@@ -1,7 +1,6 @@
 """工具注册表 - HelloAgents原生工具系统"""
 
 from typing import Optional, Any, Callable
-from ..core.exceptions import HelloAgentsException
 from .base import Tool
 
 class ToolRegistry:

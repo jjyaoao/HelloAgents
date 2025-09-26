@@ -1,0 +1,30 @@
+# HelloAgents 记忆与RAG系统依赖
+
+# 基础依赖
+numpy>=1.21.0
+pydantic>=1.8.0
+
+# 向量嵌入模型
+sentence-transformers>=2.2.0
+
+# 向量数据库
+chromadb>=0.4.0
+faiss-cpu>=1.7.0  # 或者 faiss-gpu 如果有GPU
+
+# 文本处理和检索
+scikit-learn>=1.0.0
+
+# 可选：OpenAI API（如果使用OpenAI嵌入）
+openai>=1.0.0
+
+# 可选：其他向量数据库
+# milvus>=2.3.0  # 如果使用Milvus
+# qdrant-client>=1.6.0  # 如果使用Qdrant
+
+# 可选：图数据库（用于高级记忆系统）
+# neo4j>=5.0.0
+# networkx>=2.8.0
+
+# 开发和测试
+pytest>=7.0.0
+pytest-asyncio>=0.21.0

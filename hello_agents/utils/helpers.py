@@ -2,7 +2,7 @@
 
 import importlib
 from datetime import datetime
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional
 from pathlib import Path
 
 def format_time(timestamp: Optional[datetime] = None, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:

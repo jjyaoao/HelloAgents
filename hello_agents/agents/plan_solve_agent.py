@@ -1,7 +1,7 @@
 """Plan and Solve Agent实现 - 分解规划与逐步执行的智能体"""
 
 import ast
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 from ..core.agent import Agent
 from ..core.llm import HelloAgentsLLM
 from ..core.config import Config

@@ -1,7 +1,7 @@
 """Agent基类"""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Optional
 from .message import Message
 from .llm import HelloAgentsLLM
 from .config import Config
