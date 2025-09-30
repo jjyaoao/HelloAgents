@@ -29,6 +29,8 @@ class WorkingMemory(BaseMemory):
         # 工作记忆特定配置
         self.max_capacity = self.config.working_memory_capacity
         self.max_tokens = self.config.working_memory_tokens
+        # 纯内存TTL（分钟），可通过在 MemoryConfig 上挂载 working_memory_ttl_minutes 覆盖
+        self.max_age_minutes = getattr(self.config, 'working_memory_ttl_minutes', 120)
         self.current_tokens = 0
         self.session_start = datetime.now()
         
@@ -40,6 +42,8 @@ class WorkingMemory(BaseMemory):
     
     def add(self, memory_item: MemoryItem) -> str:
         """添加工作记忆"""
+        # 过期清理
+        self._expire_old_memories()
         # 计算优先级（重要性 + 时间衰减）
         priority = self._calculate_priority(memory_item)
         
@@ -56,43 +60,89 @@ class WorkingMemory(BaseMemory):
         return memory_item.id
     
     def retrieve(self, query: str, limit: int = 5, user_id: str = None, **kwargs) -> List[MemoryItem]:
-        """检索工作记忆"""
+        """检索工作记忆 - 混合语义向量检索和关键词匹配"""
+        # 过期清理
+        self._expire_old_memories()
         if not self.memories:
             return []
 
+        # 过滤已遗忘的记忆
+        active_memories = [m for m in self.memories if not m.metadata.get("forgotten", False)]
+        
         # 按用户ID过滤（如果提供）
-        filtered_memories = self.memories
+        filtered_memories = active_memories
         if user_id:
-            filtered_memories = [m for m in self.memories if m.user_id == user_id]
+            filtered_memories = [m for m in active_memories if m.user_id == user_id]
 
         if not filtered_memories:
             return []
 
-        # 改进的关键词匹配，支持中文
-        query_lower = query.lower()
+        # 尝试语义向量检索（如果有嵌入模型）
+        vector_scores = {}
+        try:
+            # 简单的语义相似度计算（使用TF-IDF或其他轻量级方法）
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.metrics.pairwise import cosine_similarity
+            import numpy as np
+            
+            # 准备文档
+            documents = [query] + [m.content for m in filtered_memories]
+            
+            # TF-IDF向量化
+            vectorizer = TfidfVectorizer(stop_words=None, lowercase=True)
+            tfidf_matrix = vectorizer.fit_transform(documents)
+            
+            # 计算相似度
+            query_vector = tfidf_matrix[0:1]
+            doc_vectors = tfidf_matrix[1:]
+            similarities = cosine_similarity(query_vector, doc_vectors).flatten()
+            
+            # 存储向量分数
+            for i, memory in enumerate(filtered_memories):
+                vector_scores[memory.id] = similarities[i]
+                
+        except Exception as e:
+            # 如果向量检索失败，回退到关键词匹配
+            vector_scores = {}
 
+        # 计算最终分数
+        query_lower = query.lower()
         scored_memories = []
+        
         for memory in filtered_memories:
             content_lower = memory.content.lower()
-
-            # 计算匹配分数 - 使用子字符串匹配而不是分词
+            
+            # 获取向量分数（如果有）
+            vector_score = vector_scores.get(memory.id, 0.0)
+            
+            # 关键词匹配分数
+            keyword_score = 0.0
             if query_lower in content_lower:
-                # 基础匹配分数
-                similarity = len(query_lower) / len(content_lower)
-                # 结合重要性和时间衰减
-                time_decay = self._calculate_time_decay(memory.timestamp)
-                score = similarity * memory.importance * time_decay
-                scored_memories.append((score, memory))
+                keyword_score = len(query_lower) / len(content_lower)
             else:
-                # 尝试分词匹配作为备选
+                # 分词匹配
                 query_words = set(query_lower.split())
                 content_words = set(content_lower.split())
                 intersection = query_words.intersection(content_words)
                 if intersection:
-                    similarity = len(intersection) / len(query_words.union(content_words))
-                    time_decay = self._calculate_time_decay(memory.timestamp)
-                    score = similarity * memory.importance * time_decay * 0.8  # 降低分词匹配的权重
-                    scored_memories.append((score, memory))
+                    keyword_score = len(intersection) / len(query_words.union(content_words)) * 0.8
+
+            # 混合分数：向量检索 + 关键词匹配
+            if vector_score > 0:
+                base_relevance = vector_score * 0.7 + keyword_score * 0.3
+            else:
+                base_relevance = keyword_score
+            
+            # 时间衰减
+            time_decay = self._calculate_time_decay(memory.timestamp)
+            base_relevance *= time_decay
+            
+            # 重要性权重
+            importance_weight = 0.8 + (memory.importance * 0.4)
+            final_score = base_relevance * importance_weight
+            
+            if final_score > 0:
+                scored_memories.append((final_score, memory))
 
         # 按分数排序并返回
         scored_memories.sort(key=lambda x: x[0], reverse=True)
@@ -157,14 +207,23 @@ class WorkingMemory(BaseMemory):
     
     def get_stats(self) -> Dict[str, Any]:
         """获取工作记忆统计信息"""
+        # 过期清理（惰性）
+        self._expire_old_memories()
+        
+        # 工作记忆中的记忆都是活跃的（已遗忘的记忆会被直接删除）
+        active_memories = self.memories
+        
         return {
-            "count": len(self.memories),
+            "count": len(active_memories),  # 活跃记忆数量
+            "forgotten_count": 0,  # 工作记忆中已遗忘的记忆会被直接删除
+            "total_count": len(self.memories),  # 总记忆数量
             "current_tokens": self.current_tokens,
             "max_capacity": self.max_capacity,
             "max_tokens": self.max_tokens,
+            "max_age_minutes": self.max_age_minutes,
             "session_duration_minutes": (datetime.now() - self.session_start).total_seconds() / 60,
-            "avg_importance": sum(m.importance for m in self.memories) / len(self.memories) if self.memories else 0.0,
-            "capacity_usage": len(self.memories) / self.max_capacity if self.max_capacity > 0 else 0.0,
+            "avg_importance": sum(m.importance for m in active_memories) / len(active_memories) if active_memories else 0.0,
+            "capacity_usage": len(active_memories) / self.max_capacity if self.max_capacity > 0 else 0.0,
             "token_usage": self.current_tokens / self.max_tokens if self.max_tokens > 0 else 0.0,
             "memory_type": "working"
         }
@@ -227,6 +286,12 @@ class WorkingMemory(BaseMemory):
         
         to_remove = []
         
+        # 始终先执行TTL过期（分钟级）
+        cutoff_ttl = current_time - timedelta(minutes=self.max_age_minutes)
+        for memory in self.memories:
+            if memory.timestamp < cutoff_ttl:
+                to_remove.append(memory.id)
+        
         if strategy == "importance_based":
             # 删除低重要性记忆
             for memory in self.memories:
@@ -288,6 +353,30 @@ class WorkingMemory(BaseMemory):
         # 检查token限制
         while self.current_tokens > self.max_tokens:
             self._remove_lowest_priority_memory()
+
+    def _expire_old_memories(self):
+        """按TTL清理过期记忆，并同步更新堆与token计数"""
+        if not self.memories:
+            return
+        cutoff_time = datetime.now() - timedelta(minutes=self.max_age_minutes)
+        # 过滤保留的记忆
+        kept: List[MemoryItem] = []
+        removed_token_sum = 0
+        for m in self.memories:
+            if m.timestamp >= cutoff_time:
+                kept.append(m)
+            else:
+                removed_token_sum += len(m.content.split())
+        if len(kept) == len(self.memories):
+            return
+        # 覆盖列表与token
+        self.memories = kept
+        self.current_tokens = max(0, self.current_tokens - removed_token_sum)
+        # 重建堆
+        self.memory_heap = []
+        for mem in self.memories:
+            priority = self._calculate_priority(mem)
+            heapq.heappush(self.memory_heap, (-priority, mem.timestamp, mem))
     
     def _remove_lowest_priority_memory(self):
         """删除优先级最低的记忆"""

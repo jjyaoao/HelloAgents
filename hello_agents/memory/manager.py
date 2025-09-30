@@ -5,13 +5,12 @@ from datetime import datetime
 import uuid
 import logging
 
-from ..base import MemoryItem, MemoryConfig
-from ..types.working import WorkingMemory
-from ..types.episodic import EpisodicMemory
-from ..types.semantic import SemanticMemory
-from ..types.perceptual import PerceptualMemory
-from .store import MemoryStore
-from .retriever import MemoryRetriever
+from .base import MemoryItem, MemoryConfig
+from .types.working import WorkingMemory
+from .types.episodic import EpisodicMemory
+from .types.semantic import SemanticMemory
+from .types.perceptual import PerceptualMemory
+# 存储和检索功能已被各记忆类型内部实现替代
 
 logger = logging.getLogger(__name__)
 
@@ -37,24 +36,22 @@ class MemoryManager:
         self.config = config or MemoryConfig()
         self.user_id = user_id
         
-        # 初始化存储和检索组件
-        self.store = MemoryStore(self.config)
-        self.retriever = MemoryRetriever(self.store, self.config)
+        # 存储和检索功能已移至各记忆类型内部实现
         
         # 初始化各类型记忆
         self.memory_types = {}
         
         if enable_working:
-            self.memory_types['working'] = WorkingMemory(self.config, self.store)
+            self.memory_types['working'] = WorkingMemory(self.config)
         
         if enable_episodic:
-            self.memory_types['episodic'] = EpisodicMemory(self.config, self.store)
+            self.memory_types['episodic'] = EpisodicMemory(self.config)
             
         if enable_semantic:
-            self.memory_types['semantic'] = SemanticMemory(self.config, self.store)
+            self.memory_types['semantic'] = SemanticMemory(self.config)
             
         if enable_perceptual:
-            self.memory_types['perceptual'] = PerceptualMemory(self.config, self.store)
+            self.memory_types['perceptual'] = PerceptualMemory(self.config)
         
         logger.info(f"MemoryManager初始化完成，启用记忆类型: {list(self.memory_types.keys())}")
     
@@ -280,6 +277,7 @@ class MemoryManager:
         for memory_type, memory_instance in self.memory_types.items():
             type_stats = memory_instance.get_stats()
             stats["memories_by_type"][memory_type] = type_stats
+            # 使用count字段（活跃记忆数），而不是total_count（包含已遗忘的）
             stats["total_memories"] += type_stats.get("count", 0)
 
         return stats

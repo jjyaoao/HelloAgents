@@ -10,14 +10,6 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
-from enum import Enum
-
-class MemoryType(Enum):
-    """记忆类型枚举"""
-    WORKING = "working"
-    EPISODIC = "episodic"
-    SEMANTIC = "semantic"
-    PERCEPTUAL = "perceptual"
 
 class MemoryItem(BaseModel):
     """记忆项数据结构"""
@@ -31,42 +23,25 @@ class MemoryItem(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-        use_enum_values = True
 
 class MemoryConfig(BaseModel):
     """记忆系统配置"""
-    # 基础配置
-    max_capacity: int = 100
-    max_tokens: int = 4000
-    importance_threshold: float = 0.1
-    decay_factor: float = 0.95
-    consolidation_threshold: float = 0.7
-
-    # 向量存储配置
-    vector_dimension: int = 768
-    vector_store_type: str = "chroma"  # chroma, faiss, milvus
-
-    # 图存储配置
-    graph_store_type: str = "networkx"  # neo4j, networkx
-
-    # 文档存储配置
-    document_store_type: str = "sqlite"  # sqlite, postgresql
-
+    
     # 存储路径
     storage_path: str = "./memory_data"
+    
+    # 统计显示用的基础配置（仅用于展示）
+    max_capacity: int = 100
+    importance_threshold: float = 0.1
+    decay_factor: float = 0.95
 
     # 工作记忆特定配置
     working_memory_capacity: int = 10
     working_memory_tokens: int = 2000
-
-    # 情景记忆特定配置
-    episodic_memory_retention_days: int = 30
-
-    # 语义记忆特定配置
-    semantic_memory_concept_threshold: float = 0.6
+    working_memory_ttl_minutes: int = 120
 
     # 感知记忆特定配置
-    perceptual_memory_modalities: List[str] = ["text", "image"]
+    perceptual_memory_modalities: List[str] = ["text", "image", "audio", "video"]
 
 class BaseMemory(ABC):
     """记忆基类

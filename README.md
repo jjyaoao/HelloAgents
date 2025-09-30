@@ -17,15 +17,62 @@ HelloAgents是一个专为学习和教学设计的多智能体框架，基于Ope
 
 ### 安装
 
+#### 🚀 交互式安装（推荐新手）
 ```bash
-# 从PyPI安装（推荐）
-pip install hello-agents
+# 下载并运行交互式安装脚本
+python -c "import urllib.request; urllib.request.urlretrieve('https://raw.githubusercontent.com/your-repo/hello-agents/main/install.py', 'install.py')"
+python install.py
+```
 
-# 或从源码安装
+#### 📦 标准安装方式
+
+**基础功能（核心Agent）**
+```bash
+pip install hello-agents
+```
+
+**按需选择功能模块**
+```bash
+# 搜索功能
+pip install hello-agents[search]
+
+# 记忆系统
+pip install hello-agents[memory]
+
+# RAG文档问答
+pip install hello-agents[rag]
+
+# 记忆+RAG完整功能
+pip install hello-agents[memory-rag]
+
+# 全部功能（推荐）
+pip install hello-agents[all]
+```
+
+**从源码安装**
+```bash
 git clone https://github.com/your-repo/hello-agents.git
 cd hello-agents
-pip install -e .
+pip install -e .[all]
 ```
+
+#### 🔧 环境配置
+
+创建 `.env` 文件：
+```bash
+# 必需：OpenAI API
+OPENAI_API_KEY=your_openai_api_key
+
+# 可选：搜索功能
+TAVILY_API_KEY=your_tavily_api_key
+
+# 可选：记忆系统
+QDRANT_URL=http://localhost:6333
+NEO4J_URI=bolt://localhost:7687
+NEO4J_PASSWORD=your_password
+```
+
+> 📖 详细安装指南请参考 [DEPENDENCIES.md](DEPENDENCIES.md)
 
 ### 基本使用
 

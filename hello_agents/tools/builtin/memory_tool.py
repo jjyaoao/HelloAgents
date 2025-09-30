@@ -79,12 +79,14 @@ class MemoryTool(Tool):
                 ),
                 required=True
             ),
-            ToolParameter(name="content", type="string", description="记忆内容（add/update时可用）", required=False),
+            ToolParameter(name="content", type="string", description="记忆内容（add/update时可用；感知记忆可作描述）", required=False),
             ToolParameter(name="query", type="string", description="搜索查询（search时可用）", required=False),
             ToolParameter(name="memory_type", type="string", description="记忆类型：working, episodic, semantic, perceptual（默认：working）", required=False, default="working"),
             ToolParameter(name="importance", type="number", description="重要性分数，0.0-1.0（add/update时可用）", required=False),
             ToolParameter(name="limit", type="integer", description="搜索结果数量限制（默认：5）", required=False, default=5),
             ToolParameter(name="memory_id", type="string", description="目标记忆ID（update/remove时必需）", required=False),
+            ToolParameter(name="file_path", type="string", description="感知记忆：本地文件路径（image/audio）", required=False),
+            ToolParameter(name="modality", type="string", description="感知记忆模态：text/image/audio（不传则按扩展名推断）", required=False),
             ToolParameter(name="strategy", type="string", description="遗忘策略：importance_based/time_based/capacity_based（forget时可用）", required=False, default="importance_based"),
             ToolParameter(name="threshold", type="number", description="遗忘阈值（forget时可用，默认0.1）", required=False, default=0.1),
             ToolParameter(name="max_age_days", type="integer", description="最大保留天数（forget策略为time_based时可用）", required=False, default=30),
@@ -126,9 +128,11 @@ class MemoryTool(Tool):
 
     def _add_memory(
         self,
-        content: str,
+        content: str = "",
         memory_type: str = "working",
         importance: float = 0.5,
+        file_path: str = None,
+        modality: str = None,
         **metadata
     ) -> str:
         """添加记忆"""
@@ -136,6 +140,12 @@ class MemoryTool(Tool):
             # 确保会话ID存在
             if self.current_session_id is None:
                 self.current_session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            # 感知记忆文件支持：注入 raw_data 与模态
+            if memory_type == "perceptual" and file_path:
+                inferred = modality or self._infer_modality(file_path)
+                metadata.setdefault("modality", inferred)
+                metadata.setdefault("raw_data", file_path)
 
             # 添加会话信息到元数据
             metadata.update({
@@ -155,6 +165,18 @@ class MemoryTool(Tool):
 
         except Exception as e:
             return f"❌ 添加记忆失败: {str(e)}"
+
+    def _infer_modality(self, path: str) -> str:
+        """根据扩展名推断模态（默认image/audio/text）"""
+        try:
+            ext = (path.rsplit('.', 1)[-1] or '').lower()
+            if ext in {"png", "jpg", "jpeg", "bmp", "gif", "webp"}:
+                return "image"
+            if ext in {"mp3", "wav", "flac", "m4a", "ogg"}:
+                return "audio"
+            return "text"
+        except Exception:
+            return "text"
 
     def _search_memory(
         self,
@@ -229,24 +251,39 @@ class MemoryTool(Tool):
 
                     summary_parts.append(f"  • {type_label}: {count} 条 (平均重要性: {avg_importance:.2f})")
 
-            # 获取重要记忆
-            important_memories = []
-            for memory_type in self.memory_types:
-                if memory_type in stats['memories_by_type']:
-                    memories = self.memory_manager.retrieve_memories(
-                        query="",
-                        memory_types=[memory_type],
-                        limit=3,
-                        min_importance=0.7
-                    )
-                    important_memories.extend(memories)
+            # 获取重要记忆 - 修复重复问题
+            important_memories = self.memory_manager.retrieve_memories(
+                query="",
+                memory_types=None,  # 从所有类型中检索
+                limit=limit * 3,  # 获取更多候选，然后去重
+                min_importance=0.5  # 降低阈值以获取更多记忆
+            )
 
             if important_memories:
+                # 去重：使用记忆ID和内容双重去重
+                seen_ids = set()
+                seen_contents = set()
+                unique_memories = []
+                
+                for memory in important_memories:
+                    # 使用ID去重
+                    if memory.id in seen_ids:
+                        continue
+                    
+                    # 使用内容去重（防止相同内容的不同记忆）
+                    content_key = memory.content.strip().lower()
+                    if content_key in seen_contents:
+                        continue
+                    
+                    seen_ids.add(memory.id)
+                    seen_contents.add(content_key)
+                    unique_memories.append(memory)
+                
                 # 按重要性排序
-                important_memories.sort(key=lambda x: x.importance, reverse=True)
-                summary_parts.append(f"\n⭐ 重要记忆 (前{min(limit, len(important_memories))}条):")
+                unique_memories.sort(key=lambda x: x.importance, reverse=True)
+                summary_parts.append(f"\n⭐ 重要记忆 (前{min(limit, len(unique_memories))}条):")
 
-                for i, memory in enumerate(important_memories[:limit], 1):
+                for i, memory in enumerate(unique_memories[:limit], 1):
                     content_preview = memory.content[:60] + "..." if len(memory.content) > 60 else memory.content
                     summary_parts.append(f"  {i}. {content_preview} (重要性: {memory.importance:.2f})")
 
@@ -400,8 +437,9 @@ class MemoryTool(Tool):
         self.conversation_count = 0
 
         # 清理工作记忆
-        if hasattr(self.memory_manager, 'working_memory'):
-            self.memory_manager.working_memory.clear()
+        wm = self.memory_manager.memory_types.get('working') if hasattr(self.memory_manager, 'memory_types') else None
+        if wm:
+            wm.clear()
 
     def consolidate_memories(self):
         """整合记忆"""

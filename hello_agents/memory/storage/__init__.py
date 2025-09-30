@@ -1,24 +1,18 @@
 """存储层模块
 
 按照第8章架构设计的存储层：
-- VectorStore: 向量存储
-- GraphStore: 图存储  
 - DocumentStore: 文档存储
+- QdrantVectorStore: Qdrant向量存储
+- Neo4jGraphStore: Neo4j图存储
 """
 
-from .vector_store import VectorStore, ChromaVectorStore, FAISSVectorStore
-from .graph_store import GraphStore, NetworkXGraphStore
+from .qdrant_store import QdrantVectorStore, QdrantConnectionManager
+from .neo4j_store import Neo4jGraphStore
 from .document_store import DocumentStore, SQLiteDocumentStore
-from .storage_manager import UnifiedStorageManager, create_storage_manager
-
 __all__ = [
-    "VectorStore",
-    "ChromaVectorStore",
-    "FAISSVectorStore",
-    "GraphStore",
-    "NetworkXGraphStore",
+    "QdrantVectorStore",
+    "QdrantConnectionManager",
+    "Neo4jGraphStore",
     "DocumentStore",
-    "SQLiteDocumentStore",
-    "UnifiedStorageManager",
-    "create_storage_manager"
+    "SQLiteDocumentStore"
 ]

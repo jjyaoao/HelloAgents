@@ -82,17 +82,36 @@ class DocumentStore(ABC):
 class SQLiteDocumentStore(DocumentStore):
     """SQLite文档存储实现"""
     
+    _instances = {}  # 存储已创建的实例
+    _initialized_dbs = set()  # 存储已初始化的数据库路径
+    
+    def __new__(cls, db_path: str = "./memory.db"):
+        """单例模式，同一路径只创建一个实例"""
+        abs_path = os.path.abspath(db_path)
+        if abs_path not in cls._instances:
+            instance = super(SQLiteDocumentStore, cls).__new__(cls)
+            cls._instances[abs_path] = instance
+        return cls._instances[abs_path]
+    
     def __init__(self, db_path: str = "./memory.db"):
+        # 避免重复初始化
+        if hasattr(self, '_initialized'):
+            return
+            
         self.db_path = db_path
         self.local = threading.local()
         
         # 确保目录存在
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         
-        # 初始化数据库
-        self._init_database()
+        # 初始化数据库（只初始化一次）
+        abs_path = os.path.abspath(db_path)
+        if abs_path not in self._initialized_dbs:
+            self._init_database()
+            self._initialized_dbs.add(abs_path)
+            print(f"[OK] SQLite 文档存储初始化完成: {db_path}")
         
-        print(f"✅ SQLite文档存储初始化完成: {db_path}")
+        self._initialized = True
     
     def _get_connection(self):
         """获取线程本地连接"""
@@ -185,7 +204,7 @@ class SQLiteDocumentStore(DocumentStore):
             cursor.execute(index_sql)
         
         conn.commit()
-        print("✅ SQLite数据库表和索引创建完成")
+        print("[OK] SQLite 数据库表和索引创建完成")
     
     def add_memory(
         self,
@@ -434,4 +453,4 @@ class SQLiteDocumentStore(DocumentStore):
         if hasattr(self.local, 'connection'):
             self.local.connection.close()
             delattr(self.local, 'connection')
-            print("✅ SQLite连接已关闭")
+            print("[OK] SQLite 连接已关闭")

@@ -9,7 +9,7 @@
 
 from .working import WorkingMemory
 from .episodic import EpisodicMemory, Episode
-from .semantic import SemanticMemory, Concept, ConceptRelation
+from .semantic import SemanticMemory, Entity, Relation
 from .perceptual import PerceptualMemory, Perception
 
 __all__ = [
@@ -21,7 +21,7 @@ __all__ = [
 
     # 辅助类
     "Episode",
-    "Concept",
-    "ConceptRelation",
+    "Entity",
+    "Relation",
     "Perception"
 ]

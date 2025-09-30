@@ -97,10 +97,10 @@ def demo_simple_agent_with_rag():
     # 创建LLM
     llm = HelloAgentsLLM()
 
-    # 创建RAG工具 - 使用智能降级机制
+    # 创建RAG工具 - 使用本地嵌入（推荐）
     rag_tool = RAGTool(
         knowledge_base_path="./demo_knowledge_base",
-        embedding_model="tfidf",  # 使用稳定的TF-IDF
+        embedding_model="local",  # 使用本地sentence-transformers，避免网络超时
         retrieval_strategy="vector"
     )
 
@@ -181,7 +181,7 @@ def demo_combined_memory_and_rag():
     # 创建RAG工具
     rag_tool = RAGTool(
         knowledge_base_path="./combo_knowledge_base",
-        embedding_model="tfidf"  # 使用稳定的TF-IDF
+        embedding_model="local"  # 使用本地嵌入，稳定可靠
     )
 
     # 创建工具注册表并注册两个工具
@@ -417,7 +417,7 @@ def demo_tool_features():
 
     # 创建工具实例
     memory_tool = MemoryTool(user_id="feature_test")
-    rag_tool = RAGTool(knowledge_base_path="./feature_test_kb", embedding_model="tfidf")
+    rag_tool = RAGTool(knowledge_base_path="./feature_test_kb", embedding_model="local")
 
     print("🧠 MemoryTool 完整操作演示:")
 
@@ -490,7 +490,7 @@ def demo_advanced_features():
     print(f"    整合结果: {result}")
 
     print("\n🔍 RAG系统高级功能:")
-    rag_tool = RAGTool(knowledge_base_path="./advanced_kb", embedding_model="tfidf")
+    rag_tool = RAGTool(knowledge_base_path="./advanced_kb", embedding_model="local")
 
     # 演示批量添加和智能搜索
     print("\n  1. 批量知识添加:")
@@ -523,9 +523,130 @@ def demo_advanced_features():
 
     return memory_tool, rag_tool
 
+def demo_enhanced_pdf_and_local_embedding():
+    """演示7: 增强PDF处理和本地嵌入"""
+    print("\n\n📄 演示7: 增强PDF处理和本地嵌入")
+    print("=" * 50)
+
+    # 确保使用本地嵌入
+    print("🚀 配置本地嵌入模型...")
+    os.environ["EMBED_MODEL_TYPE"] = "local"
+    os.environ["EMBED_MODEL_NAME"] = "sentence-transformers/all-MiniLM-L6-v2"
+    
+    # 测试嵌入模型
+    from hello_agents.memory.embedding import get_text_embedder, get_dimension
+    embedder = get_text_embedder()
+    dimension = get_dimension()
+    print(f"✅ 嵌入模型类型: {embedder.__class__.__name__}")
+    print(f"✅ 向量维度: {dimension}")
+    
+    # 创建RAG工具
+    rag_tool = RAGTool(
+        knowledge_base_path="./pdf_demo_kb",
+        embedding_model="local",
+        rag_namespace="pdf_test"
+    )
+    
+    print(f"\n📊 初始知识库状态:")
+    stats = rag_tool.run({"action": "stats", "namespace": "pdf_test"})
+    print(stats)
+    
+    # 检查是否有PDF文件可以测试
+    pdf_files = []
+    test_files = ["Happy-LLM-0727.pdf"]
+    for pdf_file in test_files:
+        if os.path.exists(pdf_file):
+            pdf_files.append(pdf_file)
+    
+    if pdf_files:
+        print(f"\n📄 测试PDF文档处理...")
+        pdf_file = pdf_files[0]
+        print(f"处理文件: {pdf_file}")
+        
+        # 添加PDF文档（使用增强处理）
+        result = rag_tool.run({
+            "action": "add_document",
+            "file_path": pdf_file,
+            "namespace": "pdf_test"
+        })
+        print(result)
+        
+        # 显示处理后统计
+        stats_after = rag_tool.run({"action": "stats", "namespace": "pdf_test"})
+        print(f"\n📊 处理后知识库状态:")
+        print(stats_after)
+        
+        # 测试智能问答
+        test_questions = [
+            "什么是大语言模型？",
+            "如何训练神经网络？",
+            "Python在机器学习中的应用",
+            "深度学习的核心概念"
+        ]
+        
+        print(f"\n💬 测试智能问答（基于PDF内容）...")
+        for i, question in enumerate(test_questions[:2], 1):  # 测试前2个问题
+            print(f"\n--- 问答 {i} ---")
+            print(f"❓ 问题: {question}")
+            
+            answer = rag_tool.run({
+                "action": "ask",
+                "question": question,
+                "namespace": "pdf_test",
+                "include_citations": True
+            })
+            print(answer)
+    else:
+        # 如果没有PDF文件，演示文本添加和本地嵌入
+        print(f"\n📝 没有PDF文件，演示文本添加和本地嵌入...")
+        
+        sample_texts = [
+            "大语言模型（LLM）是基于Transformer架构的深度学习模型，通过海量文本数据预训练获得强大的自然语言理解和生成能力。",
+            "机器学习是人工智能的核心分支，包括监督学习、无监督学习和强化学习三大范式，广泛应用于图像识别、自然语言处理等领域。",
+            "Python是机器学习和数据科学的首选编程语言，拥有丰富的生态系统，包括NumPy、Pandas、Scikit-learn、TensorFlow等强大库。"
+        ]
+        
+        for i, text in enumerate(sample_texts):
+            result = rag_tool.run({
+                "action": "add_text",
+                "text": text,
+                "namespace": "pdf_test",
+                "document_id": f"sample_text_{i+1}"
+            })
+            print(f"✅ 添加文本 {i+1}: 成功")
+        
+        # 测试搜索和问答
+        print(f"\n💬 测试本地嵌入搜索效果...")
+        test_query = "什么是机器学习？"
+        
+        search_result = rag_tool.run({
+            "action": "search",
+            "query": test_query,
+            "namespace": "pdf_test",
+            "limit": 2
+        })
+        print(f"🔍 搜索结果:")
+        print(search_result)
+        
+        ask_result = rag_tool.run({
+            "action": "ask",
+            "question": test_query,
+            "namespace": "pdf_test"
+        })
+        print(f"\n🤖 智能问答:")
+        print(ask_result)
+    
+    print(f"\n✅ 本地嵌入优势展示:")
+    print("  🚀 快速响应：无网络延迟")
+    print("  💰 零成本：无API调用费用")
+    print("  🔒 隐私保护：数据不离开本地")
+    print("  ⚡ 稳定可靠：避免网络超时")
+    
+    return rag_tool
+
 def demo_real_world_scenario():
-    """演示7: 真实场景应用"""
-    print("\n\n🌟 演示7: 真实场景应用 - 个人学习助手")
+    """演示8: 真实场景应用"""
+    print("\n\n🌟 演示8: 真实场景应用 - 个人学习助手")
     print("=" * 50)
 
     # 创建LLM
@@ -533,7 +654,7 @@ def demo_real_world_scenario():
 
     # 创建完整的学习助手系统
     memory_tool = MemoryTool(user_id="student_001")
-    rag_tool = RAGTool(knowledge_base_path="./learning_assistant_kb", embedding_model="tfidf")
+    rag_tool = RAGTool(knowledge_base_path="./learning_assistant_kb", embedding_model="local")
 
     # 注册工具
     tool_registry = ToolRegistry()
@@ -615,11 +736,13 @@ def show_system_capabilities():
     print("  ✅ 上下文感知：为查询提供相关记忆上下文")
 
     print(f"\n🔍 RAGTool 核心能力:")
-    print("  ✅ 智能嵌入：sentence-transformers → huggingface → tfidf 降级")
-    print("  ✅ 完整操作集：add_text/add_file/search/get_context/stats/update/remove")
+    print("  ✅ 本地嵌入：sentence-transformers本地运行，无网络依赖")
+    print("  ✅ 增强PDF处理：智能段落重组，保持语义完整性")
+    print("  ✅ 智能降级：local → sentence-transformers → huggingface → tfidf")
+    print("  ✅ 完整操作集：add_document/add_text/search/ask/stats/clear")
     print("  ✅ 文档处理：自动分块、元数据管理、多格式支持")
-    print("  ✅ 向量检索：高效的相似度搜索和过滤")
-    print("  ✅ 知识管理：文档添加、列表、统计、清理")
+    print("  ✅ 向量检索：高效的相似度搜索和过滤（384维高质量向量）")
+    print("  ✅ 知识管理：文档添加、命名空间隔离、统计、清理")
 
     print(f"\n🤖 SimpleAgent 增强能力:")
     print("  ✅ 自动工具调用：智能识别并使用合适的工具")
@@ -641,7 +764,8 @@ def show_system_capabilities():
     print("  ✅ 多模态AI：处理文本、图像、音频等多种信息")
 
     print(f"\n💡 技术亮点:")
-    print("  ✅ 自顶向下设计：从工具操作到底层实现的清晰架构")
+    print("  ✅ 本地优先：优先使用本地模型，避免网络依赖和超时")
+    print("  ✅ 增强PDF处理：解决文档转换信息损失问题")
     print("  ✅ 智能降级机制：确保在任何环境下都能正常工作")
     print("  ✅ 工具化封装：完全符合HelloAgents框架规范")
     print("  ✅ 协同工作：Memory和RAG系统的深度集成")
@@ -660,34 +784,38 @@ def main():
     print("4. 🧠 四种记忆类型 - 详细展示工作/情景/语义/感知记忆")
     print("5. 🔧 功能展示 - 工具能力全面演示")
     print("6. ⚡ 高级功能 - 记忆整合和智能搜索")
-    print("7. 🌟 真实场景 - 个人学习助手应用")
-    print("8. 🎪 完整演示 - 运行所有演示")
+    print("7. 📄 PDF处理 - 增强PDF处理和本地嵌入演示")
+    print("8. 🌟 真实场景 - 个人学习助手应用")
+    print("9. 🎪 完整演示 - 运行所有演示")
 
     try:
-        choice = input("\n请输入选择 (1-8): ").strip()
+        choice = input("\n请输入选择 (1-9): ").strip()
 
-        if choice == "1" or choice == "8":
+        if choice == "1" or choice == "9":
             demo_simple_agent_with_memory()
 
-        if choice == "2" or choice == "8":
+        if choice == "2" or choice == "9":
             demo_simple_agent_with_rag()
 
-        if choice == "3" or choice == "8":
+        if choice == "3" or choice == "9":
             demo_combined_memory_and_rag()
 
-        if choice == "4" or choice == "8":
+        if choice == "4" or choice == "9":
             demo_four_memory_types()
 
-        if choice == "5" or choice == "8":
+        if choice == "5" or choice == "9":
             demo_tool_features()
 
-        if choice == "6" or choice == "8":
+        if choice == "6" or choice == "9":
             demo_advanced_features()
 
-        if choice == "7" or choice == "8":
+        if choice == "7" or choice == "9":
+            demo_enhanced_pdf_and_local_embedding()
+
+        if choice == "8" or choice == "9":
             demo_real_world_scenario()
 
-        if choice == "8":
+        if choice == "9":
             show_system_capabilities()
 
         print("\n" + "=" * 70)
@@ -715,12 +843,23 @@ def main():
             print("✅ 情景记忆：具体事件，时间序列")
             print("✅ 语义记忆：抽象知识，概念关联")
             print("✅ 感知记忆：多模态信息，跨模态检索")
-        elif choice in ["5", "6", "7"]:
+        elif choice in ["5", "6"]:
             print("\n💡 高级功能亮点:")
             print("✅ 完整的工具生态系统")
-            print("✅ 真实场景应用能力")
+            print("✅ 智能记忆管理和知识检索")
             print("✅ 灵活的扩展机制")
+        elif choice == "7":
+            print("\n💡 PDF处理和本地嵌入特点:")
+            print("✅ 增强PDF处理：智能段落重组和内容清理")
+            print("✅ 本地嵌入：无网络依赖，稳定可靠")
+            print("✅ 高质量向量：384维sentence-transformers")
+            print("✅ 实时问答：基于优化后的文档内容")
         elif choice == "8":
+            print("\n💡 真实场景应用特点:")
+            print("✅ 个性化学习助手")
+            print("✅ 记忆和知识双重能力")
+            print("✅ 智能学习规划和进度跟踪")
+        elif choice == "9":
             print("\n🎯 完整演示总结:")
             print("✅ 基础功能：Memory + RAG 工具集成")
             print("✅ 记忆类型：四种记忆类型的详细展示")
