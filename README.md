@@ -45,6 +45,9 @@ pip install hello-agents[rag]
 # 记忆+RAG完整功能
 pip install hello-agents[memory-rag]
 
+# 协议系统
+pip install hello-agents[protocols]
+
 # 全部功能（推荐）
 pip install hello-agents[all]
 ```
@@ -60,16 +63,14 @@ pip install -e .[all]
 
 创建 `.env` 文件：
 ```bash
-# 必需：OpenAI API
-OPENAI_API_KEY=your_openai_api_key
+# 模型名称
+LLM_MODEL_ID=your-model-name
 
-# 可选：搜索功能
-TAVILY_API_KEY=your_tavily_api_key
+# API密钥
+LLM_API_KEY=your-api-key-here
 
-# 可选：记忆系统
-QDRANT_URL=http://localhost:6333
-NEO4J_URI=bolt://localhost:7687
-NEO4J_PASSWORD=your_password
+# 服务地址
+LLM_BASE_URL=your-api-base-url
 ```
 
 > 📖 详细安装指南请参考 [DEPENDENCIES.md](DEPENDENCIES.md)
