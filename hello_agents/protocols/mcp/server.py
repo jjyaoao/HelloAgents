@@ -96,9 +96,27 @@ class MCPServer:
         else:
             self.mcp.prompt()(func)
         
-    def run(self):
-        """运行服务器（使用 stdio 传输）"""
-        self.mcp.run()
+    def run(self, transport: str = "stdio", **kwargs):
+        """运行服务器
+
+        Args:
+            transport: 传输方式 ("stdio", "http", "sse")
+            **kwargs: 传输特定的参数
+                - host: HTTP 服务器主机（默认 "127.0.0.1"）
+                - port: HTTP 服务器端口（默认 8000）
+                - 其他 FastMCP.run() 支持的参数
+
+        Examples:
+            # Stdio 传输（默认）
+            server.run()
+
+            # HTTP 传输
+            server.run(transport="http", host="0.0.0.0", port=8081)
+
+            # SSE 传输
+            server.run(transport="sse", host="0.0.0.0", port=8081)
+        """
+        self.mcp.run(transport=transport, **kwargs)
         
     def get_info(self) -> Dict[str, Any]:
         """
