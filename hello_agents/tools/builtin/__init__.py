@@ -8,6 +8,10 @@ HelloAgents框架的内置工具集合，包括：
 - MCPTool: MCP 协议工具（第10章 - 基于 mcp v1.15.0）
 - A2ATool: A2A 协议工具（第10章 - 基于 python-a2a v0.5.10）
 - ANPTool: ANP 协议工具（第10章 - 基于 agent-connect v0.3.7）
+- BFCLEvaluationTool: BFCL评估工具（第12章）
+- GAIAEvaluationTool: GAIA评估工具（第12章）
+- LLMJudgeTool: LLM Judge评估工具（第12章）
+- WinRateTool: Win Rate评估工具（第12章）
 """
 
 from .search import SearchTool
@@ -15,6 +19,10 @@ from .calculator import CalculatorTool
 from .memory_tool import MemoryTool
 from .rag_tool import RAGTool
 from .protocol_tools import MCPTool, A2ATool, ANPTool
+from .bfcl_evaluation_tool import BFCLEvaluationTool
+from .gaia_evaluation_tool import GAIAEvaluationTool
+from .llm_judge_tool import LLMJudgeTool
+from .win_rate_tool import WinRateTool
 
 __all__ = [
     "SearchTool",
@@ -24,4 +32,8 @@ __all__ = [
     "MCPTool",
     "A2ATool",
     "ANPTool",
+    "BFCLEvaluationTool",
+    "GAIAEvaluationTool",
+    "LLMJudgeTool",
+    "WinRateTool",
 ]

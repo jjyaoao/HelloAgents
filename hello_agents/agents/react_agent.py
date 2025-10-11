@@ -53,7 +53,7 @@ class ReActAgent(Agent):
         self,
         name: str,
         llm: HelloAgentsLLM,
-        tool_registry: ToolRegistry,
+        tool_registry: Optional[ToolRegistry] = None,
         system_prompt: Optional[str] = None,
         config: Optional[Config] = None,
         max_steps: int = 5,
@@ -65,20 +65,35 @@ class ReActAgent(Agent):
         Args:
             name: Agent名称
             llm: LLM实例
-            tool_registry: 工具注册表
+            tool_registry: 工具注册表（可选，如果不提供则创建空的工具注册表）
             system_prompt: 系统提示词
             config: 配置对象
             max_steps: 最大执行步数
             custom_prompt: 自定义提示词模板
         """
         super().__init__(name, llm, system_prompt, config)
-        self.tool_registry = tool_registry
+
+        # 如果没有提供tool_registry，创建一个空的
+        if tool_registry is None:
+            self.tool_registry = ToolRegistry()
+        else:
+            self.tool_registry = tool_registry
+
         self.max_steps = max_steps
         self.current_history: List[str] = []
 
         # 设置提示词模板：用户自定义优先，否则使用默认模板
         self.prompt_template = custom_prompt if custom_prompt else DEFAULT_REACT_PROMPT
-    
+
+    def add_tool(self, tool):
+        """
+        添加工具到工具注册表
+
+        Args:
+            tool: 工具实例
+        """
+        self.tool_registry.register_tool(tool)
+
     def run(self, input_text: str, **kwargs) -> str:
         """
         运行ReAct Agent

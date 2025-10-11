@@ -21,11 +21,9 @@ dependencies = [
 
     # 基础工具库
     "beautifulsoup4>=4.9.0,<5.0.0",
-    "numpy>=1.21.0,<2.0.0",
+    "numpy>=2.0.0,<3.0.0",
     "networkx>=2.6.0,<4.0.0",
 
-    # 第10章：通信协议依赖
-    "fastmcp>=2.0.0,<3.0.0",        # Model Context Protocol - 快速创建 MCP 服务器和客户端
 ]
 
 [project.optional-dependencies]
@@ -54,11 +52,24 @@ rag = [
     "pdfminer.six>=20221105",    # PDF解析备选
 ]
 
-# 协议支持依赖 (第10章) - 已包含在核心依赖中
-# 如需单独安装协议支持，可使用：pip install hello-agents[protocols]
+# 协议支持依赖
 protocols = [
     "fastmcp>=2.0.0,<3.0.0",        # MCP 协议支持
     "a2a-sdk>=0.1.0",               # A2A 协议支持（可选）
+]
+
+# 评估系统依赖
+evaluation = [
+    "datasets>=2.14.0,<3.0.0",      # HuggingFace数据集加载
+    "huggingface_hub>=0.20.0,<1.0.0",  # HuggingFace Hub API
+    "evaluate>=0.4.0,<1.0.0",       # 评估工具
+    "pandas>=2.0.0,<3.0.0",         # 数据处理和分析
+    "matplotlib>=3.7.0,<4.0.0",     # 可视化(可选)
+    "seaborn>=0.12.0,<1.0.0",       # 高级可视化(可选)
+    "tqdm>=4.65.0,<5.0.0",          # 进度条显示
+    "gradio>=4.0.0,<5.0.0",         # 人工验证界面
+    "bfcl-eval",                    # BFCL官方评估工具
+    "numpy>=1.0.0,<2.0.0",
 ]
 
 # 完整记忆和RAG功能
@@ -68,7 +79,7 @@ memory-rag = [
 
 # 全部功能
 all = [
-    "hello-agents[search,memory-rag,protocols]",
+    "hello-agents[search,memory-rag,protocols,evaluation]",
 ]
 
 [project.urls]
