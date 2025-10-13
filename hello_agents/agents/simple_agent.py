@@ -356,7 +356,7 @@ class SimpleAgent(Agent):
     def list_tools(self) -> list:
         """列出所有可用工具"""
         if self.tool_registry:
-            return list(self.tool_registry.tools.keys())
+            return self.tool_registry.list_tools()
         return []
 
     def has_tools(self) -> bool:

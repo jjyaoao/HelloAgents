@@ -88,11 +88,33 @@ class ReActAgent(Agent):
     def add_tool(self, tool):
         """
         添加工具到工具注册表
+        支持MCP工具的自动展开
 
         Args:
-            tool: 工具实例
+            tool: 工具实例(可以是普通Tool或MCPTool)
         """
-        self.tool_registry.register_tool(tool)
+        # 检查是否是MCP工具
+        if hasattr(tool, 'auto_expand') and tool.auto_expand:
+            # MCP工具会自动展开为多个工具
+            if hasattr(tool, '_available_tools') and tool._available_tools:
+                for mcp_tool in tool._available_tools:
+                    # 创建包装工具
+                    from ..tools.base import Tool
+                    wrapped_tool = Tool(
+                        name=f"{tool.name}_{mcp_tool['name']}",
+                        description=mcp_tool.get('description', ''),
+                        func=lambda input_text, t=tool, tn=mcp_tool['name']: t.run({
+                            "action": "call_tool",
+                            "tool_name": tn,
+                            "arguments": {"input": input_text}
+                        })
+                    )
+                    self.tool_registry.register_tool(wrapped_tool)
+                print(f"✅ MCP工具 '{tool.name}' 已展开为 {len(tool._available_tools)} 个独立工具")
+            else:
+                self.tool_registry.register_tool(tool)
+        else:
+            self.tool_registry.register_tool(tool)
 
     def run(self, input_text: str, **kwargs) -> str:
         """
