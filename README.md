@@ -17,14 +17,7 @@ HelloAgents是一个专为学习和教学设计的多智能体框架，基于Ope
 
 ### 安装
 
-#### 🚀 交互式安装（推荐新手）
-```bash
-# 下载并运行交互式安装脚本
-python -c "import urllib.request; urllib.request.urlretrieve('https://raw.githubusercontent.com/your-repo/hello-agents/main/install.py', 'install.py')"
-python install.py
-```
-
-#### 📦 标准安装方式
+####  标准安装方式
 
 **基础功能（核心Agent）**
 ```bash
@@ -47,6 +40,12 @@ pip install hello-agents[memory-rag]
 
 # 协议系统
 pip install hello-agents[protocols]
+
+# 智能体性能评估
+pip install hello-agents[evaluation]
+
+# 强化学习训练
+pip install hello-agents[rl]
 
 # 全部功能（推荐）
 pip install hello-agents[all]
