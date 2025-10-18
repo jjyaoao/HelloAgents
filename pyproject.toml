@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hello-agents"
-version = "0.2.4"
+version = "0.2.5"
 description = "灵活、可扩展的多智能体框架 - 基于OpenAI原生API"
 readme = "README.md"
 license = {text = "CC-BY-NC-SA-4.0"}
@@ -72,6 +72,19 @@ evaluation = [
     "numpy>=1.0.0,<2.0.0",
 ]
 
+# RL训练系统依赖（第11章）
+rl = [
+    "trl>=0.24.0",                  # Transformer Reinforcement Learning
+    "transformers>=4.20.0",         # Transformer模型
+    "torch>=2.0.0",                 # PyTorch
+    "datasets>=2.14.0",             # 数据集加载
+    "accelerate>=0.20.0",           # 分布式训练加速
+    "peft>=0.5.0",                  # LoRA等参数高效微调
+    "bitsandbytes>=0.41.0",         # 量化支持
+    "wandb>=0.15.0",                # 训练监控（可选）
+    "tensorboard>=2.13.0",          # TensorBoard支持（可选）
+]
+
 # 完整记忆和RAG功能
 memory-rag = [
     "hello-agents[memory,rag]",
@@ -79,7 +92,7 @@ memory-rag = [
 
 # 全部功能
 all = [
-    "hello-agents[search,memory-rag,protocols,evaluation]",
+    "hello-agents[search,memory-rag,protocols,evaluation,rl]",
 ]
 
 [project.urls]

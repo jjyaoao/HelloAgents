@@ -18,6 +18,9 @@ from .builtin.gaia_evaluation_tool import GAIAEvaluationTool
 from .builtin.llm_judge_tool import LLMJudgeTool
 from .builtin.win_rate_tool import WinRateTool
 
+# RL训练工具（第11章）
+from .builtin.rl_training_tool import RLTrainingTool
+
 # 高级功能
 from .chain import ToolChain, ToolChainManager, create_research_chain, create_simple_chain
 from .async_executor import AsyncToolExecutor, run_parallel_tools, run_batch_tool, run_parallel_tools_sync, run_batch_tool_sync
@@ -45,6 +48,9 @@ __all__ = [
     "GAIAEvaluationTool",
     "LLMJudgeTool",
     "WinRateTool",
+
+    # RL训练工具
+    "RLTrainingTool",
 
     # 工具链功能
     "ToolChain",
