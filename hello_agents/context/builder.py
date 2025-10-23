@@ -303,11 +303,11 @@ class ContextBuilder:
         
         # [Output] - 输出约束
         output_section = """[Output]
-请按以下格式回答：
-1. 结论（简洁明确）
-2. 依据（列出支撑证据及来源）
-3. 风险与假设（如有）
-4. 下一步行动建议（如适用）"""
+                            请按以下格式回答：
+                            1. 结论（简洁明确）
+                            2. 依据（列出支撑证据及来源）
+                            3. 风险与假设（如有）
+                            4. 下一步行动建议（如适用）"""
         sections.append(output_section)
         
         return "\n\n".join(sections)
