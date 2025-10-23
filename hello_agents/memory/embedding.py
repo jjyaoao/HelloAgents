@@ -168,10 +168,10 @@ class DashScopeEmbedding(EmbeddingModel):
 
     def _init_client(self):
         try:
-            import dashscope  # noqa: F401
             if self.api_key:
                 # 将统一命名的 API Key 注入到 SDK 期望的位置
                 os.environ["DASHSCOPE_API_KEY"] = self.api_key
+            import dashscope  # noqa: F401
         except ImportError:
             raise ImportError("请安装 dashscope: pip install dashscope")
 
