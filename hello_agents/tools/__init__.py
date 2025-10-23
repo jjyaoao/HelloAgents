@@ -8,6 +8,8 @@ from .builtin.search import SearchTool
 from .builtin.calculator import CalculatorTool
 from .builtin.memory_tool import MemoryTool
 from .builtin.rag_tool import RAGTool
+from .builtin.note_tool import NoteTool
+from .builtin.terminal_tool import TerminalTool
 
 # 协议工具
 from .builtin.protocol_tools import MCPTool, A2ATool, ANPTool
@@ -37,6 +39,8 @@ __all__ = [
     "CalculatorTool",
     "MemoryTool",
     "RAGTool",
+    "NoteTool",
+    "TerminalTool",
 
     # 协议工具
     "MCPTool",
