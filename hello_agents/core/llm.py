@@ -8,8 +8,17 @@ from .exceptions import HelloAgentsException
 
 # 支持的LLM提供商
 SUPPORTED_PROVIDERS = Literal[
-    "openai", "deepseek", "qwen", "modelscope",
-    "kimi", "zhipu", "ollama", "vllm", "local", "auto"
+    "openai",
+    "deepseek",
+    "qwen",
+    "modelscope",
+    "kimi",
+    "zhipu",
+    "ollama",
+    "vllm",
+    "local",
+    "auto",
+    "custom",
 ]
 
 class HelloAgentsLLM:
@@ -56,10 +65,16 @@ class HelloAgentsLLM:
         self.kwargs = kwargs
 
         # 自动检测provider或使用指定的provider
+        requested_provider = (provider or "").lower() if provider else None
         self.provider = provider or self._auto_detect_provider(api_key, base_url)
 
-        # 根据provider确定API密钥和base_url
-        self.api_key, self.base_url = self._resolve_credentials(api_key, base_url)
+        if requested_provider == "custom":
+            self.provider = "custom"
+            self.api_key = api_key or os.getenv("LLM_API_KEY")
+            self.base_url = base_url or os.getenv("LLM_BASE_URL")
+        else:
+            # 根据provider确定API密钥和base_url
+            self.api_key, self.base_url = self._resolve_credentials(api_key, base_url)
 
         # 验证必要参数
         if not self.model:
@@ -203,6 +218,11 @@ class HelloAgentsLLM:
             resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "http://localhost:8000/v1"
             return resolved_api_key, resolved_base_url
 
+        elif self.provider == "custom":
+            resolved_api_key = api_key or os.getenv("LLM_API_KEY")
+            resolved_base_url = base_url or os.getenv("LLM_BASE_URL")
+            return resolved_api_key, resolved_base_url
+
         else:
             # auto或其他情况：使用通用配置，支持任何OpenAI兼容的服务
             resolved_api_key = api_key or os.getenv("LLM_API_KEY")
@@ -237,6 +257,8 @@ class HelloAgentsLLM:
             return "meta-llama/Llama-2-7b-chat-hf"  # vLLM常用模型
         elif self.provider == "local":
             return "local-model"  # 本地模型占位符
+        elif self.provider == "custom":
+            return self.model or "gpt-3.5-turbo"
         else:
             # auto或其他情况：根据base_url智能推断默认模型
             base_url = os.getenv("LLM_BASE_URL", "")
