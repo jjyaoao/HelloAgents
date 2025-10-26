@@ -25,10 +25,11 @@ from .agents.simple_agent import SimpleAgent
 from .agents.react_agent import ReActAgent
 from .agents.reflection_agent import ReflectionAgent
 from .agents.plan_solve_agent import PlanAndSolveAgent
+from .agents.tool_aware_agent import ToolAwareSimpleAgent
 
 # 工具系统
 from .tools.registry import ToolRegistry, global_registry
-from .tools.builtin.search import SearchTool, search
+from .tools.builtin.search_tool import SearchTool, search
 from .tools.builtin.calculator import CalculatorTool, calculate
 from .tools.chain import ToolChain, ToolChainManager
 from .tools.async_executor import AsyncToolExecutor
@@ -48,9 +49,10 @@ __all__ = [
 
     # Agent范式
     "SimpleAgent",
-    "ReActAgent", 
+    "ReActAgent",
     "ReflectionAgent",
     "PlanAndSolveAgent",
+    "ToolAwareSimpleAgent",
 
     # 工具系统
     "ToolRegistry",

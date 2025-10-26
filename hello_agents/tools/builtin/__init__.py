@@ -16,7 +16,7 @@ HelloAgents框架的内置工具集合，包括：
 - WinRateTool: Win Rate评估工具（第12章）
 """
 
-from .search import SearchTool
+from .search_tool import SearchTool
 from .calculator import CalculatorTool
 from .memory_tool import MemoryTool
 from .rag_tool import RAGTool
