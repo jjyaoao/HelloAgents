@@ -17,13 +17,27 @@ class ToolRegistry:
         self._tools: dict[str, Tool] = {}
         self._functions: dict[str, dict[str, Any]] = {}
 
-    def register_tool(self, tool: Tool):
+    def register_tool(self, tool: Tool, auto_expand: bool = True):
         """
         注册Tool对象
 
         Args:
             tool: Tool实例
+            auto_expand: 是否自动展开可展开的工具（默认True）
         """
+        # 检查工具是否可展开
+        if auto_expand and hasattr(tool, 'expandable') and tool.expandable:
+            expanded_tools = tool.get_expanded_tools()
+            if expanded_tools:
+                # 注册所有展开的子工具
+                for sub_tool in expanded_tools:
+                    if sub_tool.name in self._tools:
+                        print(f"⚠️ 警告：工具 '{sub_tool.name}' 已存在，将被覆盖。")
+                    self._tools[sub_tool.name] = sub_tool
+                print(f"✅ 工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具")
+                return
+
+        # 普通工具或不展开的工具
         if tool.name in self._tools:
             print(f"⚠️ 警告：工具 '{tool.name}' 已存在，将被覆盖。")
 

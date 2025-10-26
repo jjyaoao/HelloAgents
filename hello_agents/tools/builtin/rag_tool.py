@@ -23,7 +23,7 @@ from typing import Dict, Any, List, Optional
 import os
 import time
 
-from ..base import Tool, ToolParameter
+from ..base import Tool, ToolParameter, tool_action
 from ...memory.rag.pipeline import create_rag_pipeline
 from ...core.llm import HelloAgentsLLM
 
@@ -43,11 +43,13 @@ class RAGTool(Tool):
         qdrant_url: str = None,
         qdrant_api_key: str = None,
         collection_name: str = "rag_knowledge_base",
-        rag_namespace: str = "default"
+        rag_namespace: str = "default",
+        expandable: bool = False
     ):
         super().__init__(
             name="rag",
-            description="RAG工具 - 支持多格式文档检索增强生成，提供智能问答能力"
+            description="RAG工具 - 支持多格式文档检索增强生成，提供智能问答能力",
+            expandable=expandable
         )
         
         self.knowledge_base_path = knowledge_base_path
@@ -102,7 +104,7 @@ class RAGTool(Tool):
         return pipeline
 
     def run(self, parameters: Dict[str, Any]) -> str:
-        """执行工具 - Tool基类要求的接口
+        """执行工具（非展开模式）
 
         Args:
             parameters: 工具参数字典，必须包含action参数
@@ -113,11 +115,60 @@ class RAGTool(Tool):
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败：缺少必需的参数"
 
-        action = parameters.get("action")
-        # 移除action参数，传递其余参数给execute方法
-        kwargs = {k: v for k, v in parameters.items() if k != "action"}
+        if not self.initialized:
+            return f"❌ RAG工具未正确初始化，请检查配置: {getattr(self, 'init_error', '未知错误')}"
 
-        return self.execute(action, **kwargs)
+        action = parameters.get("action")
+
+        # 根据action调用对应的方法，传入提取的参数
+        try:
+            if action == "add_document":
+                return self._add_document(
+                    file_path=parameters.get("file_path"),
+                    document_id=parameters.get("document_id"),
+                    namespace=parameters.get("namespace", "default"),
+                    chunk_size=parameters.get("chunk_size", 800),
+                    chunk_overlap=parameters.get("chunk_overlap", 100)
+                )
+            elif action == "add_text":
+                return self._add_text(
+                    text=parameters.get("text"),
+                    document_id=parameters.get("document_id"),
+                    namespace=parameters.get("namespace", "default"),
+                    chunk_size=parameters.get("chunk_size", 800),
+                    chunk_overlap=parameters.get("chunk_overlap", 100)
+                )
+            elif action == "ask":
+                question = parameters.get("question") or parameters.get("query")
+                return self._ask(
+                    question=question,
+                    limit=parameters.get("limit", 5),
+                    enable_advanced_search=parameters.get("enable_advanced_search", True),
+                    include_citations=parameters.get("include_citations", True),
+                    max_chars=parameters.get("max_chars", 1200),
+                    namespace=parameters.get("namespace", "default")
+                )
+            elif action == "search":
+                return self._search(
+                    query=parameters.get("query") or parameters.get("question"),
+                    limit=parameters.get("limit", 5),
+                    min_score=parameters.get("min_score", 0.1),
+                    enable_advanced_search=parameters.get("enable_advanced_search", True),
+                    max_chars=parameters.get("max_chars", 1200),
+                    include_citations=parameters.get("include_citations", True),
+                    namespace=parameters.get("namespace", "default")
+                )
+            elif action == "stats":
+                return self._get_stats(namespace=parameters.get("namespace", "default"))
+            elif action == "clear":
+                return self._clear_knowledge_base(
+                    confirm=parameters.get("confirm", False),
+                    namespace=parameters.get("namespace", "default")
+                )
+            else:
+                return f"❌ 不支持的操作: {action}"
+        except Exception as e:
+            return f"❌ 执行操作 '{action}' 时发生错误: {str(e)}"
 
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义 - Tool基类要求的接口"""
@@ -179,74 +230,28 @@ class RAGTool(Tool):
                 default=True
             )
         ]
-    
-    def execute(self, action: str, **kwargs) -> str:
-        """执行RAG操作
-        
-        主要操作流程：
-        1. add_document/add_text: 数据 → 解析 → 分块 → 向量化 → 存储
-        2. ask: 问题 → 检索 → 上下文注入 → LLM生成答案
-        3. search: 查询 → 向量检索 → 返回相关片段
-        """
-        
-        if not self.initialized:
-            return f"❌ RAG工具未正确初始化，请检查配置: {getattr(self, 'init_error', '未知错误')}"
-        
-        # 参数预处理
-        kwargs = self._preprocess_parameters(action, **kwargs)
-        
-        try:
-            if action == "add_document":
-                return self._add_document(**kwargs)
-            elif action == "add_text":
-                return self._add_text(**kwargs)
-            elif action == "ask":
-                return self._ask(**kwargs)
-            elif action == "search":
-                return self._search(**kwargs)
-            elif action == "stats":
-                return self._get_stats(namespace=kwargs.get("namespace"))
-            elif action == "clear":
-                return self._clear_knowledge_base(**kwargs)
-            else:
-                available_actions = ["add_document", "add_text", "ask", "search", "stats", "clear"]
-                return f"❌ 不支持的操作: {action}\n✅ 可用操作: {', '.join(available_actions)}"
-                
-        except Exception as e:
-            return f"❌ 执行操作 '{action}' 时发生错误: {str(e)}"
-    
-    def _preprocess_parameters(self, action: str, **kwargs) -> Dict[str, Any]:
-        """预处理参数，设置默认值和验证"""
-        # 设置默认值
-        defaults = {
-            "namespace": "default",
-            "limit": 5,
-            "include_citations": True,
-            "enable_advanced_search": True,
-            "max_chars": 1200,
-            "min_score": 0.1,
-            "chunk_size": 800,
-            "chunk_overlap": 100
-        }
-        
-        for key, value in defaults.items():
-            if key not in kwargs or kwargs[key] is None:
-                kwargs[key] = value
-        
-        # 参数验证
-        if action in ["add_document"] and not kwargs.get("file_path"):
-            raise ValueError("add_document 操作需要提供 file_path 参数")
-        elif action in ["add_text"] and not kwargs.get("text"):
-            raise ValueError("add_text 操作需要提供 text 参数")
-        elif action in ["ask"] and not (kwargs.get("question") or kwargs.get("query")):
-            raise ValueError("ask 操作需要提供 question 或 query 参数")
-        elif action in ["search"] and not (kwargs.get("query") or kwargs.get("question")):
-            raise ValueError("search 操作需要提供 query 或 question 参数")
-            
-        return kwargs
 
-    def _add_document(self, file_path: str, document_id: str = None, namespace: Optional[str] = None, chunk_size: int = 800, chunk_overlap: int = 100, **kwargs) -> str:
-        """添加文档到知识库（支持多格式）"""
+    @tool_action("rag_add_document", "添加文档到知识库（支持PDF、Word、Excel、PPT、图片、音频等多种格式）")
+    def _add_document(
+        self,
+        file_path: str,
+        document_id: str = None,
+        namespace: str = "default",
+        chunk_size: int = 800,
+        chunk_overlap: int = 100
+    ) -> str:
+        """添加文档到知识库
+
+        Args:
+            file_path: 文档文件路径
+            document_id: 文档ID（可选）
+            namespace: 知识库命名空间（用于隔离不同项目）
+            chunk_size: 分块大小
+            chunk_overlap: 分块重叠大小
+
+        Returns:
+            执行结果
+        """
         try:
             if not file_path or not os.path.exists(file_path):
                 return f"❌ 文件不存在: {file_path}"
@@ -276,8 +281,28 @@ class RAGTool(Tool):
         except Exception as e:
             return f"❌ 添加文档失败: {str(e)}"
     
-    def _add_text(self, text: str, document_id: str = None, metadata: Optional[Dict[str, Any]] = None, namespace: Optional[str] = None, chunk_size: int = 800, chunk_overlap: int = 100, **kwargs) -> str:
-        """添加文本到知识库"""
+    @tool_action("rag_add_text", "添加文本到知识库")
+    def _add_text(
+        self,
+        text: str,
+        document_id: str = None,
+        namespace: str = "default",
+        chunk_size: int = 800,
+        chunk_overlap: int = 100
+    ) -> str:
+        """添加文本到知识库
+
+        Args:
+            text: 要添加的文本内容
+            document_id: 文档ID（可选）
+            namespace: 知识库命名空间
+            chunk_size: 分块大小
+            chunk_overlap: 分块重叠大小
+
+        Returns:
+            执行结果
+        """
+        metadata = None
         try:
             if not text or not text.strip():
                 return "❌ 文本内容不能为空"
@@ -323,8 +348,31 @@ class RAGTool(Tool):
         except Exception as e:
             return f"❌ 添加文本失败: {str(e)}"
     
-    def _search(self, query: str, limit: int = 5, min_score: float = 0.1, enable_advanced_search: bool = True, max_chars: int = 1200, include_citations: bool = True, namespace: Optional[str] = None, **kwargs) -> str:
-        """搜索知识库"""
+    @tool_action("rag_search", "搜索知识库中的相关内容")
+    def _search(
+        self,
+        query: str,
+        limit: int = 5,
+        min_score: float = 0.1,
+        enable_advanced_search: bool = True,
+        max_chars: int = 1200,
+        include_citations: bool = True,
+        namespace: str = "default"
+    ) -> str:
+        """搜索知识库
+
+        Args:
+            query: 搜索查询词
+            limit: 返回结果数量
+            min_score: 最低相关度分数
+            enable_advanced_search: 是否启用高级搜索（MQE、HyDE）
+            max_chars: 每个结果最大字符数
+            include_citations: 是否包含引用来源
+            namespace: 知识库命名空间
+
+        Returns:
+            搜索结果
+        """
         try:
             if not query or not query.strip():
                 return "❌ 搜索查询不能为空"
@@ -380,10 +428,30 @@ class RAGTool(Tool):
         except Exception as e:
             return f"❌ 搜索失败: {str(e)}"
     
-    def _ask(self, question: Optional[str] = None, query: Optional[str] = None, limit: int = 5, enable_advanced_search: bool = True, include_citations: bool = True, max_chars: int = 1200, namespace: Optional[str] = None, **kwargs) -> str:
+    @tool_action("rag_ask", "基于知识库进行智能问答")
+    def _ask(
+        self,
+        question: str,
+        limit: int = 5,
+        enable_advanced_search: bool = True,
+        include_citations: bool = True,
+        max_chars: int = 1200,
+        namespace: str = "default"
+    ) -> str:
         """智能问答：检索 → 上下文注入 → LLM生成答案
-        
-        核心流程：
+
+        Args:
+            question: 用户问题
+            limit: 检索结果数量
+            enable_advanced_search: 是否启用高级搜索
+            include_citations: 是否包含引用来源
+            max_chars: 每个结果最大字符数
+            namespace: 知识库命名空间
+
+        Returns:
+            智能问答结果
+
+        核心流程:
         1. 解析用户问题
         2. 智能检索相关内容
         3. 构建上下文和提示词
@@ -391,12 +459,11 @@ class RAGTool(Tool):
         5. 添加引用来源
         """
         try:
-            # 获取用户问题（question 优先级高于 query）
-            user_question = question or query
-            if not user_question or not user_question.strip():
+            # 验证问题
+            if not question or not question.strip():
                 return "❌ 请提供要询问的问题"
-            
-            user_question = user_question.strip()
+
+            user_question = question.strip()
             print(f"🔍 智能问答: {user_question}")
             
             # 1. 检索相关内容
@@ -553,8 +620,17 @@ class RAGTool(Tool):
         
         return "\n".join(result)
 
-    def _clear_knowledge_base(self, confirm: bool = False, namespace: Optional[str] = None, **kwargs) -> str:
-        """清空知识库"""
+    @tool_action("rag_clear", "清空知识库（危险操作，请谨慎使用）")
+    def _clear_knowledge_base(self, confirm: bool = False, namespace: str = "default") -> str:
+        """清空知识库
+
+        Args:
+            confirm: 确认执行（必须设置为True）
+            namespace: 知识库命名空间
+
+        Returns:
+            执行结果
+        """
         try:
             if not confirm:
                 return (
@@ -582,8 +658,16 @@ class RAGTool(Tool):
         except Exception as e:
             return f"❌ 清空知识库失败: {str(e)}"
 
-    def _get_stats(self, namespace: Optional[str] = None) -> str:
-        """获取知识库统计"""
+    @tool_action("rag_stats", "获取知识库统计信息")
+    def _get_stats(self, namespace: str = "default") -> str:
+        """获取知识库统计
+
+        Args:
+            namespace: 知识库命名空间
+
+        Returns:
+            统计信息
+        """
         try:
             pipeline = self._get_pipeline(namespace)
             stats = pipeline["get_stats"]()
@@ -873,5 +957,6 @@ class RAGTool(Tool):
             summary.append(f"❌ 失败: {failed} 个文本")
             summary.append("\n**失败详情:**")
             summary.extend(results)
-        
+
         return "\n".join(summary)
+

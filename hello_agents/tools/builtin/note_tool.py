@@ -34,14 +34,13 @@ updated_at: 2025-01-18T12:00:00
 ```
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
 import json
-import os
 import re
 
-from ..base import Tool, ToolParameter
+from ..base import Tool, ToolParameter, tool_action
 
 
 class NoteTool(Tool):
@@ -77,11 +76,13 @@ class NoteTool(Tool):
         self,
         workspace: str = "./notes",
         auto_backup: bool = True,
-        max_notes: int = 1000
+        max_notes: int = 1000,
+        expandable: bool = False
     ):
         super().__init__(
             name="note",
-            description="笔记工具 - 创建、读取、更新、删除结构化笔记，支持任务状态、结论、阻塞项等类型"
+            description="笔记工具 - 创建、读取、更新、删除结构化笔记，支持任务状态、结论、阻塞项等类型",
+            expandable=expandable
         )
         
         self.workspace = Path(workspace)
@@ -191,24 +192,42 @@ class NoteTool(Tool):
         return note
     
     def run(self, parameters: Dict[str, Any]) -> str:
-        """执行工具"""
+        """执行工具（非展开模式）"""
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败"
-        
+
         action = parameters.get("action")
-        
+
+        # 根据action调用对应的方法，传入提取的参数
         if action == "create":
-            return self._create_note(parameters)
+            return self._create_note(
+                title=parameters.get("title"),
+                content=parameters.get("content"),
+                note_type=parameters.get("note_type", "general"),
+                tags=parameters.get("tags")
+            )
         elif action == "read":
-            return self._read_note(parameters)
+            return self._read_note(note_id=parameters.get("note_id"))
         elif action == "update":
-            return self._update_note(parameters)
+            return self._update_note(
+                note_id=parameters.get("note_id"),
+                title=parameters.get("title"),
+                content=parameters.get("content"),
+                note_type=parameters.get("note_type"),
+                tags=parameters.get("tags")
+            )
         elif action == "delete":
-            return self._delete_note(parameters)
+            return self._delete_note(note_id=parameters.get("note_id"))
         elif action == "list":
-            return self._list_notes(parameters)
+            return self._list_notes(
+                note_type=parameters.get("note_type"),
+                limit=parameters.get("limit", 10)
+            )
         elif action == "search":
-            return self._search_notes(parameters)
+            return self._search_notes(
+                query=parameters.get("query"),
+                limit=parameters.get("limit", 10)
+            )
         elif action == "summary":
             return self._get_summary()
         else:
@@ -275,13 +294,19 @@ class NoteTool(Tool):
             ),
         ]
     
-    def _create_note(self, params: Dict[str, Any]) -> str:
-        """创建笔记"""
-        title = params.get("title")
-        content = params.get("content")
-        note_type = params.get("note_type", "general")
-        tags = params.get("tags", [])
-        
+    @tool_action("note_create", "创建一条新的结构化笔记")
+    def _create_note(self, title: str, content: str, note_type: str = "general", tags: List[str] = None) -> str:
+        """创建笔记
+
+        Args:
+            title: 笔记标题
+            content: 笔记内容
+            note_type: 笔记类型 (task_state, conclusion, blocker, action, reference, general)
+            tags: 标签列表
+
+        Returns:
+            创建结果
+        """
         if not title or not content:
             return "❌ 创建笔记需要提供 title 和 content"
         
@@ -326,10 +351,16 @@ class NoteTool(Tool):
         
         return f"✅ 笔记创建成功\nID: {note_id}\n标题: {title}\n类型: {note_type}"
     
-    def _read_note(self, params: Dict[str, Any]) -> str:
-        """读取笔记"""
-        note_id = params.get("note_id")
-        
+    @tool_action("note_read", "读取指定ID的笔记")
+    def _read_note(self, note_id: str) -> str:
+        """读取笔记
+
+        Args:
+            note_id: 笔记ID
+
+        Returns:
+            笔记内容
+        """
         if not note_id:
             return "❌ 读取笔记需要提供 note_id"
         
@@ -344,10 +375,20 @@ class NoteTool(Tool):
         
         return self._format_note(note)
     
-    def _update_note(self, params: Dict[str, Any]) -> str:
-        """更新笔记"""
-        note_id = params.get("note_id")
-        
+    @tool_action("note_update", "更新已存在的笔记")
+    def _update_note(self, note_id: str, title: str = None, content: str = None, note_type: str = None, tags: List[str] = None) -> str:
+        """更新笔记
+
+        Args:
+            note_id: 笔记ID
+            title: 新标题（可选）
+            content: 新内容（可选）
+            note_type: 新类型（可选）
+            tags: 新标签列表（可选）
+
+        Returns:
+            更新结果
+        """
         if not note_id:
             return "❌ 更新笔记需要提供 note_id"
         
@@ -359,17 +400,17 @@ class NoteTool(Tool):
         with open(note_path, 'r', encoding='utf-8') as f:
             markdown_text = f.read()
         note = self._markdown_to_note(markdown_text)
-        
+
         # 更新字段
-        if "title" in params:
-            note["title"] = params["title"]
-        if "content" in params:
-            note["content"] = params["content"]
-            note["metadata"]["word_count"] = len(params["content"])
-        if "note_type" in params:
-            note["type"] = params["note_type"]
-        if "tags" in params:
-            note["tags"] = params["tags"] if isinstance(params["tags"], list) else []
+        if title:
+            note["title"] = title
+        if content:
+            note["content"] = content
+            note["metadata"]["word_count"] = len(content)
+        if note_type:
+            note["type"] = note_type
+        if tags is not None:
+            note["tags"] = tags if isinstance(tags, list) else []
         
         note["updated_at"] = datetime.now().isoformat()
         
@@ -389,10 +430,16 @@ class NoteTool(Tool):
         
         return f"✅ 笔记更新成功: {note_id}"
     
-    def _delete_note(self, params: Dict[str, Any]) -> str:
-        """删除笔记"""
-        note_id = params.get("note_id")
-        
+    @tool_action("note_delete", "删除指定ID的笔记")
+    def _delete_note(self, note_id: str) -> str:
+        """删除笔记
+
+        Args:
+            note_id: 笔记ID
+
+        Returns:
+            删除结果
+        """
         if not note_id:
             return "❌ 删除笔记需要提供 note_id"
         
@@ -412,11 +459,17 @@ class NoteTool(Tool):
         
         return f"✅ 笔记已删除: {note_id}"
     
-    def _list_notes(self, params: Dict[str, Any]) -> str:
-        """列出笔记"""
-        note_type = params.get("note_type")
-        limit = params.get("limit", 10)
-        
+    @tool_action("note_list", "列出所有笔记或指定类型的笔记")
+    def _list_notes(self, note_type: str = None, limit: int = 10) -> str:
+        """列出笔记
+
+        Args:
+            note_type: 笔记类型过滤（可选）
+            limit: 返回结果数量限制
+
+        Returns:
+            笔记列表
+        """
         # 过滤笔记
         filtered_notes = self.notes_index["notes"]
         if note_type:
@@ -438,11 +491,19 @@ class NoteTool(Tool):
         
         return result
     
-    def _search_notes(self, params: Dict[str, Any]) -> str:
-        """搜索笔记"""
-        query = params.get("query", "").lower()
-        limit = params.get("limit", 10)
-        
+    @tool_action("note_search", "搜索包含关键词的笔记")
+    def _search_notes(self, query: str, limit: int = 10) -> str:
+        """搜索笔记
+
+        Args:
+            query: 搜索关键词
+            limit: 返回结果数量限制
+
+        Returns:
+            搜索结果
+        """
+        query_lower = query.lower()
+
         if not query:
             return "❌ 搜索需要提供 query"
         
@@ -461,9 +522,9 @@ class NoteTool(Tool):
                     continue
                 
                 # 检查标题、内容、标签是否匹配
-                if (query in note["title"].lower() or
-                    query in note["content"].lower() or
-                    any(query in tag.lower() for tag in note.get("tags", []))):
+                if (query_lower in note["title"].lower() or
+                    query_lower in note["content"].lower() or
+                    any(query_lower in tag.lower() for tag in note.get("tags", []))):
                     matched_notes.append(note)
         
         # 限制数量
@@ -478,8 +539,13 @@ class NoteTool(Tool):
         
         return result
     
+    @tool_action("note_summary", "获取笔记系统的摘要统计信息")
     def _get_summary(self) -> str:
-        """获取笔记摘要"""
+        """获取笔记摘要
+
+        Returns:
+            摘要信息
+        """
         total = len(self.notes_index["notes"])
         
         # 按类型统计
@@ -515,4 +581,3 @@ class NoteTool(Tool):
             result += f"更新时间: {note['updated_at']}\n"
             result += f"\n内容:\n{note['content']}\n"
             return result
-

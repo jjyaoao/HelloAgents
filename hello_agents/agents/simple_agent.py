@@ -322,30 +322,24 @@ class SimpleAgent(Agent):
 
         return final_response
 
-    def add_tool(self, tool) -> None:
+    def add_tool(self, tool, auto_expand: bool = True) -> None:
         """
         添加工具到Agent（便利方法）
 
-        如果是MCP工具且启用了auto_expand，会自动展开为多个独立工具
+        Args:
+            tool: Tool对象
+            auto_expand: 是否自动展开可展开的工具（默认True）
+
+        如果工具是可展开的（expandable=True），会自动展开为多个独立工具
         """
         if not self.tool_registry:
             from ..tools.registry import ToolRegistry
             self.tool_registry = ToolRegistry()
             self.enable_tool_calling = True
 
-        # 检查是否是MCP工具且需要展开
-        if hasattr(tool, 'auto_expand') and tool.auto_expand:
-            # 获取展开的工具列表
-            expanded_tools = tool.get_expanded_tools()
-            if expanded_tools:
-                # 注册所有展开的工具
-                for expanded_tool in expanded_tools:
-                    self.tool_registry.register_tool(expanded_tool)
-                print(f"✅ MCP工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具")
-                return
-
-        # 普通工具或不展开的MCP工具
-        self.tool_registry.register_tool(tool)
+        # 直接使用 ToolRegistry 的 register_tool 方法
+        # ToolRegistry 会自动处理工具展开
+        self.tool_registry.register_tool(tool, auto_expand=auto_expand)
 
     def remove_tool(self, tool_name: str) -> bool:
         """移除工具（便利方法）"""
