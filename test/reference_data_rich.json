@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ref-001",
+    "query": "什么是人工智能？",
+    "standard_answer": "人工智能（AI）是指由人制造出来的机器所表现的智能。通常人工智能是指通过普通计算机程序所实现的人工智能，目标是让计算机能够从经验中学习，识别模式并利用最少的人工干预来执行任务。",
+    "explanation": "人工智能包括机器学习、深度学习、自然语言处理等多个子领域。",
+    "difficulty": "intermediate",
+    "category": "AI basics"
+  },
+  {
+    "id": "ref-002",
+    "query": "解释机器学习",
+    "standard_answer": "机器学习是人工智能的一个子集，它涉及让计算机学习如何根据数据做出决定。与传统编程不同，机器学习系统从数据中自动学习规律，而不需要为每种情况编写特定的规则。",
+    "explanation": "机器学习算法包括监督学习、无监督学习和强化学习。",
+    "difficulty": "intermediate",
+    "category": "ML concepts"
+  },
+  {
+    "id": "ref-003",
+    "query": "深度学习是什么？",
+    "standard_answer": "深度学习是机器学习的一个分支，使用多层人工神经网络架构处理大量数据。深度学习在图像识别、自然语言处理和语音识别等领域取得了突破性成就。",
+    "explanation": "深度学习模型包括卷积神经网络（CNN）、递归神经网络（RNN）等。",
+    "difficulty": "advanced",
+    "category": "DL techniques"
+  }
+]

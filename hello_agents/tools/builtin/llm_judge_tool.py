@@ -10,8 +10,8 @@ from typing import Dict, Any
 from datetime import datetime
 
 from hello_agents.tools.base import Tool
-from hello_agents.evaluation.benchmarks.data_generation.dataset import AIDataset
-from hello_agents.evaluation.benchmarks.data_generation.llm_judge import LLMJudgeEvaluator
+from hello_agents.evaluation.benchmarks.data_generation_AIME.dataset import AIDataset
+from hello_agents.evaluation.benchmarks.data_generation_AIME.llm_judge import LLMJudgeEvaluator
 from hello_agents.core.llm import HelloAgentsLLM
 
 
