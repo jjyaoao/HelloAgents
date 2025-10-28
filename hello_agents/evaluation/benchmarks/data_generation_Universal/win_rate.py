@@ -13,7 +13,7 @@ from hello_agents.core.llm import HelloAgentsLLM
 from hello_agents.evaluation.benchmarks.data_generation_Universal.evaluation_config import EvaluationConfig
 
 
-class WinRateEvaluator:
+class UniversalWinRateEvaluator:
     """Win Rate评估器 - 支持自定义维度"""
 
     def __init__(

@@ -7,8 +7,8 @@ Data Generation Evaluation Module
 - 支持自定义维度和数据格式适配
 """
 
-from hello_agents.evaluation.benchmarks.data_generation_Universal.llm_judge import LLMJudgeEvaluator
-from hello_agents.evaluation.benchmarks.data_generation_Universal.win_rate import WinRateEvaluator
+from hello_agents.evaluation.benchmarks.data_generation_Universal.llm_judge import UniversalLLMJudgeEvaluator
+from hello_agents.evaluation.benchmarks.data_generation_Universal.win_rate import UniversalWinRateEvaluator
 from hello_agents.evaluation.benchmarks.data_generation_Universal.evaluation_config import (
     EvaluationConfig,
     EvaluationDimension,
@@ -18,8 +18,8 @@ from hello_agents.evaluation.benchmarks.data_generation_Universal.universal_data
 )
 
 __all__ = [
-    "LLMJudgeEvaluator",
-    "WinRateEvaluator",
+    "UniversalLLMJudgeEvaluator",
+    "UniversalWinRateEvaluator",
     "EvaluationConfig",
     "EvaluationDimension",
     "UniversalDataset",

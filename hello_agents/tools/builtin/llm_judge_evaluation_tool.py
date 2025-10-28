@@ -29,14 +29,14 @@ from datetime import datetime
 
 from hello_agents.evaluation.benchmarks.data_generation_Universal import (
     EvaluationConfig,
-    LLMJudgeEvaluator as BaseLLMJudgeEvaluator,
+    UniversalLLMJudgeEvaluator as BaseLLMJudgeEvaluator,
     UniversalDataset,
 )
 from hello_agents.core.llm import HelloAgentsLLM
 
 
-# 保留 LLMJudgeDataset 用于向后兼容（已过时，内部使用 UniversalDataset）
-class LLMJudgeDataset:
+# 保留 UniversalLLMJudgeDataset 用于向后兼容（已过时，内部使用 UniversalDataset）
+class UniversalLLMJudgeDataset:
     """LLM Judge 数据集加载器（已过时，推荐使用 UniversalDataset）
 
     此类仅保留以保证向后兼容性，内部已转换为使用 UniversalDataset。
@@ -88,7 +88,7 @@ class LLMJudgeDataset:
         return len(self._data)
 
 
-class LLMJudgeEvaluationTool:
+class UniversalLLMJudgeTool:
     """LLM Judge 评估工具 - 通用版本
 
     支持多种数据源和评估模板的高级评估工具。
@@ -193,7 +193,7 @@ class LLMJudgeEvaluationTool:
 
         # Step 1: Load evaluation data
         print(f"\n📥 步骤 1: 加载评估数据")
-        print(f"   Source: {source_config['path']}")
+        print(f"   来源: {source_config['path']}")
         dataset = UniversalDataset(
             source_config=source_config,
             field_mapping=field_mapping
@@ -204,7 +204,7 @@ class LLMJudgeEvaluationTool:
         ref_data = None
         if reference_config and "path" in reference_config:
             print(f"\n📥 步骤 2: 加载参考数据")
-            print(f"   Source: {reference_config['path']}")
+            print(f"   来源: {reference_config['path']}")
             reference_dataset = UniversalDataset(
                 source_config=reference_config,
                 field_mapping=reference_field_mapping
@@ -216,8 +216,9 @@ class LLMJudgeEvaluationTool:
         self.template = template
         self.field_mapping = field_mapping
         self.eval_config = EvaluationConfig.load_template(template)
-        print(f"   Template: {template}")
-        print(f"   Judge Model: {self.llm.model}")
+        print(f"   模板: {template}")
+        print(f"   评估模型: {self.llm.model}")
+        print(f"   评估维度: {', '.join(self.eval_config.get_dimension_names())}")
 
         # Step 4: Run evaluation
         print(f"\n🚀 步骤 4: 开始评估")

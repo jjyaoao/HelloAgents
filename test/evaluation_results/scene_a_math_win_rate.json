@@ -1,0 +1,77 @@
+{
+  "scenario": "A_Math_WinRate",
+  "template": "math",
+  "field_mapping": "None (standard fields)",
+  "generated_data": [
+    {
+      "id": "math_gen_001",
+      "problem": "Find the number of positive integers $n$ such that $n^2 + 19n + 92$ is a perfect square.",
+      "answer": "Using completing the square: $(2n+19)^2 - 4m^2 = -7$. Solve the Pell-like equation."
+    },
+    {
+      "id": "math_gen_002",
+      "problem": "In triangle ABC with sides AB=13, BC=14, CA=15, find the area.",
+      "answer": "Using Heron's formula: $s=21$, Area $= \\sqrt{21 \\cdot 8 \\cdot 7 \\cdot 6} = 84$."
+    }
+  ],
+  "reference_data": [
+    {
+      "id": "math_ref_001",
+      "problem": "Find the number of positive integers $n$ such that $n^2 + 19n + 92$ is a perfect square.",
+      "answer": "Let $n^2 + 19n + 92 = m^2$. Complete the square and solve systematically."
+    },
+    {
+      "id": "math_ref_002",
+      "problem": "In triangle ABC with sides AB=13, BC=14, CA=15, find the area.",
+      "answer": "Use Heron's formula with semi-perimeter s=21."
+    }
+  ],
+  "results": {
+    "comparisons": [
+      {
+        "problem_a_id": "math_gen_002",
+        "problem_b_id": "math_ref_002",
+        "winner": "Problem A",
+        "reason": "在correctness方面：两者数学逻辑都正确，都能得到正确答案84，因此此维度相当。在clarity方面：Problem A明确给出了完整的计算过程和最终结果，而Problem B只给出了半周长，没有展示完整的计算步骤和最终答案，表述不够清晰。在completeness方面：Problem A完整展示了从半周长到最终面积的计算过程，而Problem B只给出了半周长，解答步骤不完整。在difficulty_match方面：两者都使用了正确的海伦公式，难度匹配适当。在originality方面：两者都使用了标准的海伦公式解法，没有提供多种解法或创新思路，此维度相当。综合来看，Problem A在clarity和completeness两个关键维度上明显优于Problem B，虽然两者在correctness、difficulty_match和originality上相当，但Problem A提供了更完整清晰的解答过程，因此整体质量更高。",
+        "comparison_text": "```json\n{\n    \"winner\": \"A\",\n    \"reason\": \"在correctness方面：两者数学逻辑都正确，都能得到正确答案84，因此此维度相当。在clarity方面：Problem A明确给出了完整的计算过程和最终结果，而Problem B只给出了半周长，没有展示完整的计算步骤和最终答案，表述不够清晰。在completeness方面：Problem A完整展示了从半周长到最终面积的计算过程，而Problem B只给出了半周长，解答步骤不完整。在difficulty_match方面：两者都使用了正确的海伦公式，难度匹配适当。在originality方面：两者都使用了标准的海伦公式解法，没有提供多种解法或创新思路，此维度相当。综合来看，Problem A在clarity和completeness两个关键维度上明显优于Problem B，虽然两者在correctness、difficulty_match和originality上相当，但Problem A提供了更完整清晰的解答过程，因此整体质量更高。\"\n}\n```",
+        "execution_time": 9.273595809936523,
+        "actual_order": {
+          "A": "Generated",
+          "B": "Reference"
+        },
+        "actual_winner": "Generated"
+      },
+      {
+        "problem_a_id": "math_ref_002",
+        "problem_b_id": "math_gen_001",
+        "winner": "Problem A",
+        "reason": "从各维度详细比较：1. correctness：Problem A使用海伦公式计算三角形面积，数学逻辑完全正确，答案准确；Problem B虽然解题思路正确，但最终答案需要验证所有解，完整性稍显不足。2. clarity：Problem A问题表述清晰直接，解题步骤明确；Problem B涉及佩尔方程，表述较为抽象，对读者数学背景要求较高。3. completeness：Problem A提供了完整的解题路径（海伦公式→半周长→面积计算）；Problem B只给出了关键步骤，缺少详细的推导和验证过程。4. difficulty_match：Problem A作为几何计算题，难度适中且符合预期；Problem B作为数论问题，难度较高但未明确声明，可能超出一般读者预期。5. originality：两者都采用标准解法，Problem B在数论技巧上略有特色，但未提供多种解法或特别启发性的思路。综合来看，Problem A在正确性、清晰度、完整性和难度匹配方面均优于Problem B，虽然Problem B在原创性上略有优势，但不足以弥补其他维度的差距，因此最终判断A更好。",
+        "comparison_text": "```json\n{\n    \"winner\": \"A\",\n    \"reason\": \"从各维度详细比较：1. correctness：Problem A使用海伦公式计算三角形面积，数学逻辑完全正确，答案准确；Problem B虽然解题思路正确，但最终答案需要验证所有解，完整性稍显不足。2. clarity：Problem A问题表述清晰直接，解题步骤明确；Problem B涉及佩尔方程，表述较为抽象，对读者数学背景要求较高。3. completeness：Problem A提供了完整的解题路径（海伦公式→半周长→面积计算）；Problem B只给出了关键步骤，缺少详细的推导和验证过程。4. difficulty_match：Problem A作为几何计算题，难度适中且符合预期；Problem B作为数论问题，难度较高但未明确声明，可能超出一般读者预期。5. originality：两者都采用标准解法，Problem B在数论技巧上略有特色，但未提供多种解法或特别启发性的思路。综合来看，Problem A在正确性、清晰度、完整性和难度匹配方面均优于Problem B，虽然Problem B在原创性上略有优势，但不足以弥补其他维度的差距，因此最终判断A更好。\"\n}\n```",
+        "execution_time": 11.4970121383667,
+        "actual_order": {
+          "A": "Reference",
+          "B": "Generated"
+        },
+        "actual_winner": "Reference"
+      }
+    ],
+    "metrics": {
+      "win_rate": 0.5,
+      "loss_rate": 0.5,
+      "tie_rate": 0.0,
+      "wins": 1,
+      "losses": 1,
+      "ties": 0,
+      "total_comparisons": 2
+    },
+    "evaluation_date": "2025-10-28T16:51:12.041361",
+    "judge_model": "gpt-4o",
+    "dimensions": [
+      "correctness",
+      "clarity",
+      "completeness",
+      "difficulty_match",
+      "originality"
+    ]
+  }
+}

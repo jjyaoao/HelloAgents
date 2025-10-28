@@ -29,14 +29,14 @@ from datetime import datetime
 
 from hello_agents.evaluation.benchmarks.data_generation_Universal import (
     EvaluationConfig,
-    WinRateEvaluator as BaseWinRateEvaluator,
+    UniversalWinRateEvaluator as BaseWinRateEvaluator,
     UniversalDataset,
 )
 from hello_agents.core.llm import HelloAgentsLLM
 
 
-# 保留 WinRateDataset 用于向后兼容（内部使用 UniversalDataset）
-class WinRateDataset:
+# 保留 UniversalWinRateDataset 用于向后兼容（内部使用 UniversalDataset）
+class UniversalWinRateDataset:
     """Win Rate 数据集加载器（推荐使用 UniversalDataset）
 
     此类仅保留以保证向后兼容性，内部已转换为使用 UniversalDataset。
@@ -116,7 +116,7 @@ class WinRateDataset:
         return len(self.generated_data), len(self.reference_data)
 
 
-class WinRateEvaluationTool:
+class UniversalWinRateTool:
     """Win Rate 评估工具 - 通用版本
 
     支持多种数据源和评估模板的胜率对比工具。
@@ -183,29 +183,29 @@ class WinRateEvaluationTool:
 
     def run(self, params: Dict[str, Any]) -> str:
         """
-        Run complete evaluation workflow (high-level interface)
+        运行完整的评估工作流（高级接口）
 
         Args:
-            params: Parameter dictionary containing:
-                - generated_config: Generated data source config (required)
+            params: 参数字典，包含：
+                - generated_config: 生成数据源配置 (必需)
                   {"path": "path/to/generated.json"}
-                - reference_config: Reference data source config (required)
+                - reference_config: 参考数据源配置 (必需)
                   {"path": "path/to/reference.json"}
-                - generated_field_mapping: Field mapping for generated data (optional)
+                - generated_field_mapping: 生成数据字段映射 (可选)
                   {"problem": "question", "answer": "answer"}
-                - reference_field_mapping: Field mapping for reference data (optional)
-                - template: Evaluation template (optional, overrides init template)
-                - num_comparisons: Number of comparisons (optional, default: min(len(generated), len(reference)))
-                - output_dir: Output directory (optional, default: "evaluation_results")
-                - judge_model: Judge model (optional, overrides init model)
+                - reference_field_mapping: 参考数据字段映射 (可选)
+                - template: 评估模板 (可选，覆盖初始化时的模板)
+                - num_comparisons: 对比次数 (可选，默认: min(len(generated), len(reference)))
+                - output_dir: 输出目录 (可选，默认: "evaluation_results")
+                - judge_model: 评估模型 (可选，覆盖初始化时的模型)
 
         Returns:
-            JSON string with evaluation results
+            包含评估结果的 JSON 字符串
         """
         import os
         from datetime import datetime
 
-        # Parse parameters
+        # 解析参数
         generated_config = params.get("generated_config")
         reference_config = params.get("reference_config")
         generated_field_mapping = params.get("generated_field_mapping", self.field_mapping)
@@ -215,64 +215,66 @@ class WinRateEvaluationTool:
         num_comparisons = params.get("num_comparisons", 0)
         output_dir = params.get("output_dir", "evaluation_results")
 
-        # Validate required parameters
+        # 验证必需参数
         if not generated_config or "path" not in generated_config:
             raise ValueError("generated_config must contain 'path' key")
         if not reference_config or "path" not in reference_config:
             raise ValueError("reference_config must contain 'path' key")
 
-        # Add timestamp to output directory
+        # 为输出目录添加时间戳
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = os.path.join(output_dir, f"win_rate_{timestamp}")
 
-        # Create output directory
+        # 创建输出目录
         os.makedirs(output_dir, exist_ok=True)
 
         print("\n" + "="*70)
-        print("Win Rate Evaluation (Local Data)")
+        print("🎯 Win Rate 评估")
         print("="*70)
 
-        # Step 1: Load generated data
-        print(f"\nStep 1: Loading generated data")
-        print(f"  Source: {generated_config['path']}")
+        # 步骤 1: 加载生成数据
+        print(f"\n📥 步骤 1: 加载生成数据")
+        print(f"   来源: {generated_config['path']}")
         generated_dataset = UniversalDataset(
             source_config=generated_config,
             field_mapping=generated_field_mapping
         )
         generated = generated_dataset.load()
+        print(f"   ✓ 已加载 {len(generated)} 条生成数据")
 
-        # Step 2: Load reference data
-        print(f"\nStep 2: Loading reference data")
-        print(f"  Source: {reference_config['path']}")
+        # 步骤 2: 加载参考数据
+        print(f"\n📥 步骤 2: 加载参考数据")
+        print(f"   来源: {reference_config['path']}")
         reference_dataset = UniversalDataset(
             source_config=reference_config,
             field_mapping=reference_field_mapping
         )
         reference = reference_dataset.load()
+        print(f"   ✓ 已加载 {len(reference)} 条参考数据")
 
-        # Step 3: Configure evaluator
-        print(f"\nStep 3: Configuring evaluator")
+        # 步骤 3: 配置评估器
+        print(f"\n⚙️  步骤 3: 配置评估器")
         self.template = template
         self.field_mapping = generated_field_mapping
         self.eval_config = EvaluationConfig.load_template(template)
-        print(f"  Template: {template}")
-        print(f"  Judge Model: {self.llm.model}")
+        print(f"   模板: {template}")
+        print(f"   评估维度: {', '.join(self.eval_config.get_dimension_names())}")
 
-        # Step 4: Run evaluation
-        print(f"\nStep 4: Running comparison evaluation")
+        # 步骤 4: 运行评估
+        print(f"\n🚀 步骤 4: 开始 Win Rate 对比评估")
         results = self.evaluate(generated, reference, num_comparisons=num_comparisons)
-        print(f"  Evaluation complete")
+        print(f"   ✓ 评估完成")
 
-        # Step 5: Export report
-        print(f"\nStep 5: Exporting evaluation report")
+        # 步骤 5: 导出报告
+        print(f"\n💾 步骤 5: 导出评估报告")
         report_path = self.export_report(results, output_dir=output_dir)
-        print(f"  Report saved: {report_path}")
+        print(f"   ✓ 报告已保存: {report_path}")
 
         print("\n" + "="*70)
-        print("Win Rate Evaluation Complete")
+        print("✅ Win Rate 评估完成")
         print("="*70)
 
-        # Return results
+        # 返回结果
         metrics = results.get("metrics", {})
         return json.dumps({
             "status": "success",

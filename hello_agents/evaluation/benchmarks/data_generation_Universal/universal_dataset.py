@@ -154,7 +154,7 @@ class UniversalDataset:
             适配后的数据列表
         """
         print("\n" + "="*70)
-        print("Loading Dataset from Local Source")
+        print("从本地源加载数据")
         print("="*70)
 
         # 加载原始数据
@@ -164,9 +164,9 @@ class UniversalDataset:
         self.data = self._apply_field_mapping(self.raw_data)
 
         if self.field_mapping:
-            print(f"[OK] Field mapping applied")
+            print(f"✅ 映射添加")
 
-        print(f"\n[Done] Successfully loaded {len(self.data)} records")
+        print(f"\n✅ 成功加载 {len(self.data)} 记录")
         print("="*70 + "\n")
 
         return self.data

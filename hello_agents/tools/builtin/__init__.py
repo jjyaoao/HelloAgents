@@ -27,8 +27,8 @@ from .bfcl_evaluation_tool import BFCLEvaluationTool
 from .gaia_evaluation_tool import GAIAEvaluationTool
 from .llm_judge_tool import LLMJudgeTool
 from .win_rate_tool import WinRateTool
-from .llm_judge_evaluation_tool import LLMJudgeEvaluationTool, LLMJudgeDataset
-from .win_rate_evaluation_tool import WinRateEvaluationTool, WinRateDataset
+from .llm_judge_evaluation_tool import UniversalLLMJudgeTool, UniversalLLMJudgeDataset
+from .win_rate_evaluation_tool import UniversalWinRateTool, UniversalWinRateDataset
 
 __all__ = [
     "SearchTool",
@@ -44,8 +44,8 @@ __all__ = [
     "GAIAEvaluationTool",
     "LLMJudgeTool",
     "WinRateTool",
-    "LLMJudgeEvaluationTool",
-    "LLMJudgeDataset",
-    "WinRateEvaluationTool",
-    "WinRateDataset",
+    "UniversalLLMJudgeTool",
+    "UniversalLLMJudgeDataset",
+    "UniversalWinRateTool",
+    "UniversalWinRateDataset",
 ]

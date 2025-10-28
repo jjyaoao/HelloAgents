@@ -12,7 +12,7 @@ from hello_agents.core.llm import HelloAgentsLLM
 from hello_agents.evaluation.benchmarks.data_generation_Universal.evaluation_config import EvaluationConfig
 
 
-class LLMJudgeEvaluator:
+class UniversalLLMJudgeEvaluator:
     """LLM Judge评估器 - 支持自定义维度"""
 
     def __init__(
@@ -82,7 +82,6 @@ class LLMJudgeEvaluator:
     ) -> Dict[str, Any]:
         """批量评估问题"""
         print(f"\n🎯 开始LLM Judge评估")
-        print(f"   评委模型: {self.judge_model}")
         print(f"   评估维度: {', '.join(self.eval_config.get_dimension_names())}")
         print(f"   评估数量: {len(problems)}")
 
