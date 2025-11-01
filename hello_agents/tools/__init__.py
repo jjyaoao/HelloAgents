@@ -15,10 +15,10 @@ from .builtin.terminal_tool import TerminalTool
 from .builtin.protocol_tools import MCPTool, A2ATool, ANPTool
 
 # 评估工具（第12章）
-from .builtin.bfcl_evaluation_tool import BFCLEvaluationTool
-from .builtin.gaia_evaluation_tool import GAIAEvaluationTool
 from .builtin.llm_judge_tool import LLMJudgeTool
 from .builtin.win_rate_tool import WinRateTool
+from .builtin.llm_judge_evaluation_tool import UniversalLLMJudgeTool, UniversalLLMJudgeDataset
+from .builtin.win_rate_evaluation_tool import UniversalWinRateTool, UniversalWinRateDataset
 
 # RL训练工具（第11章）
 from .builtin.rl_training_tool import RLTrainingTool
@@ -52,6 +52,10 @@ __all__ = [
     "GAIAEvaluationTool",
     "LLMJudgeTool",
     "WinRateTool",
+    "UniversalLLMJudgeTool",
+    "UniversalLLMJudgeDataset",
+    "UniversalWinRateTool",
+    "UniversalWinRateDataset",
 
     # RL训练工具
     "RLTrainingTool",
