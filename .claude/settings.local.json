@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__list_directory"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
