@@ -451,5 +451,5 @@ class Neo4jGraphStore:
         if hasattr(self, 'driver') and self.driver:
             try:
                 self.driver.close()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"关闭Neo4j驱动时出错: {e}")

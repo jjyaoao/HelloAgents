@@ -9,6 +9,7 @@ from ..core.agent import Agent
 from ..core.config import Config
 from ..core.llm import HelloAgentsLLM
 from ..core.message import Message
+from ..utils.parameter_converter import convert_parameter_types
 
 if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
@@ -155,50 +156,6 @@ class FunctionCallAgent(Agent):
         except json.JSONDecodeError:
             return {}
 
-    def _convert_parameter_types(self, tool_name: str, param_dict: dict[str, Any]) -> dict[str, Any]:
-        """根据工具定义尽可能转换参数类型"""
-        if not self.tool_registry:
-            return param_dict
-
-        tool = self.tool_registry.get_tool(tool_name)
-        if not tool:
-            return param_dict
-
-        try:
-            tool_params = tool.get_parameters()
-        except Exception:
-            return param_dict
-
-        type_mapping = {param.name: param.type for param in tool_params}
-        converted: dict[str, Any] = {}
-
-        for key, value in param_dict.items():
-            param_type = type_mapping.get(key)
-            if not param_type:
-                converted[key] = value
-                continue
-
-            try:
-                normalized = param_type.lower()
-                if normalized in {"number", "float"}:
-                    converted[key] = float(value)
-                elif normalized in {"integer", "int"}:
-                    converted[key] = int(value)
-                elif normalized in {"boolean", "bool"}:
-                    if isinstance(value, bool):
-                        converted[key] = value
-                    elif isinstance(value, (int, float)):
-                        converted[key] = bool(value)
-                    elif isinstance(value, str):
-                        converted[key] = value.lower() in {"true", "1", "yes"}
-                    else:
-                        converted[key] = bool(value)
-                else:
-                    converted[key] = value
-            except (TypeError, ValueError):
-                converted[key] = value
-
-        return converted
 
     def _execute_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """执行工具调用并返回字符串结果"""
@@ -208,7 +165,8 @@ class FunctionCallAgent(Agent):
         tool = self.tool_registry.get_tool(tool_name)
         if tool:
             try:
-                typed_arguments = self._convert_parameter_types(tool_name, arguments)
+                # 类型转换（使用共享工具）
+                typed_arguments = convert_parameter_types(tool_name, arguments, self.tool_registry)
                 return tool.run(typed_arguments)
             except Exception as exc:
                 return f"❌ 工具调用失败：{exc}"

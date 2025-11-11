@@ -169,7 +169,11 @@ class NoteTool(Tool):
                 if key == 'tags':
                     try:
                         note[key] = json.loads(value)
-                    except:
+                    except (json.JSONDecodeError, ValueError) as e:
+                        # JSON解析失败，返回空列表
+                        note[key] = []
+                    except Exception as e:
+                        # 其他异常也返回空列表
                         note[key] = []
                 else:
                     note[key] = value
