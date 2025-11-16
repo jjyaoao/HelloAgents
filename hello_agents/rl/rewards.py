@@ -234,7 +234,7 @@ def evaluate_rewards(
     Returns:
         评估结果字典
     """
-    rewards = reward_fn(completions, ground_truths=ground_truths)
+    rewards = reward_fn(completions, ground_truth=ground_truths)
     
     return {
         "mean_reward": sum(rewards) / len(rewards) if rewards else 0.0,
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     ground_truths = ["2", "2", "2"]
     
     # 计算奖励
-    rewards = reward_fn(completions, ground_truths)
+    rewards = reward_fn(completions, ground_truth=ground_truths)
     print("Rewards:", rewards)
     
     # 评估
