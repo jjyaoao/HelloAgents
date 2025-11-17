@@ -74,7 +74,7 @@ LLM_API_KEY=your-api-key-here
 LLM_BASE_URL=your-api-base-url
 ```
 
-> 📖 详细安装指南请参考 [DEPENDENCIES.md](DEPENDENCIES.md)
+> 📖 详细安装指南请参考 [CONFIGURATION.md](https://github.com/jjyaoao/HelloAgents/blob/main/docs/tutorials/CONFIGURATION.md)
 
 ### 基本使用
 
