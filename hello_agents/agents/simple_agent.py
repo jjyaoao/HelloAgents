@@ -344,7 +344,7 @@ class SimpleAgent(Agent):
     def remove_tool(self, tool_name: str) -> bool:
         """移除工具（便利方法）"""
         if self.tool_registry:
-            return self.tool_registry.unregister_tool(tool_name)
+            return self.tool_registry.unregister(tool_name)
         return False
 
     def list_tools(self) -> list:
