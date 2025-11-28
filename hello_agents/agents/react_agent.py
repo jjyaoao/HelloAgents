@@ -125,7 +125,10 @@ class ReActAgent(Agent):
             )
             
             # 调用LLM
-            messages = [{"role": "user", "content": prompt}]
+            messages = []
+            if self.system_prompt:
+                messages.append({"role": "system", "content": self.system_prompt})
+            messages.append({"role": "user", "content": prompt})
             response_text = self.llm.invoke(messages, **kwargs)
             
             if not response_text:
