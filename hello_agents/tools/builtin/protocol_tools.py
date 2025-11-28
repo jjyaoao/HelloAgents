@@ -537,7 +537,7 @@ class A2ATool(Tool):
     官方仓库: https://github.com/a2aproject/a2a-python
     """
     
-    def __init__(self, agent_url: str, name: str = "a2a", description: str = None):
+    def __init__(self, agent_url: str, name: str = "a2a", description: Optional[str] = None):
         """
         初始化 A2A 工具
 
@@ -663,8 +663,8 @@ class ANPTool(Tool):
     注意：这是概念性实现，不需要额外依赖
     详见文档: docs/chapter10/ANP_CONCEPTS.md
     """
-    
-    def __init__(self, name: str = "anp", description: str = None, discovery=None, network=None):
+
+    def __init__(self, name: str = "anp", description: Optional[str] = None, discovery=None, network=None):
         """初始化 ANP 工具
 
         Args:
