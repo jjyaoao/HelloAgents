@@ -165,7 +165,7 @@ class ReActAgent(Agent):
             print(f"🎬 行动: {tool_name}[{tool_input}]")
             
             # 调用工具
-            observation = self.tool_registry.execute_tool(tool_name, tool_input)
+            observation = self._execute_tool_call(tool_name, tool_input)
             print(f"👀 观察: {observation}")
             
             # 更新历史
@@ -202,3 +202,26 @@ class ReActAgent(Agent):
         """解析行动输入"""
         match = re.match(r"\w+\[(.*)\]", action_text)
         return match.group(1) if match else ""
+
+    def _execute_tool_call(self, tool_name: str, parameters: str) -> str:
+        """执行工具调用"""
+        if not self.tool_registry:
+            return f"❌ 错误：未配置工具注册表"
+
+        try:
+            # 获取Tool对象
+            tool = self.tool_registry.get_tool(tool_name)
+            if not tool:
+                return f"❌ 错误：未找到工具 '{tool_name}'"
+
+            from json import loads, JSONDecodeError
+            try:
+                param_dict = loads(parameters)
+            except JSONDecodeError:
+                param_dict = {"input": parameters}
+
+            # 调用工具
+            return tool.run(param_dict)
+
+        except Exception as e:
+            return f"❌ 工具调用失败：{str(e)}"
