@@ -16,7 +16,7 @@ import numpy as np
 
 from ..base import BaseMemory, MemoryItem, MemoryConfig
 from ..embedding import get_text_embedder, get_dimension
-from ...core.database_config import get_database_config
+
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -139,6 +139,7 @@ class SemanticMemory(BaseMemory):
     def _init_databases(self):
         """初始化专业数据库存储"""
         try:
+            from ...core.database_config import get_database_config
             # 获取数据库配置
             db_config = get_database_config()
             
