@@ -159,3 +159,5 @@ cython_debug/
 #.idea/
 .DS_Store
 .obsidian
+test/
+**/test/
