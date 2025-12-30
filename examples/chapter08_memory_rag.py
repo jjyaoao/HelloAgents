@@ -99,9 +99,7 @@ def demo_simple_agent_with_rag():
 
     # 创建RAG工具 - 使用本地嵌入（推荐）
     rag_tool = RAGTool(
-        knowledge_base_path="./demo_knowledge_base",
-        embedding_model="local",  # 使用本地sentence-transformers，避免网络超时
-        retrieval_strategy="vector"
+        knowledge_base_path="./demo_knowledge_base"
     )
 
     # 创建工具注册表
