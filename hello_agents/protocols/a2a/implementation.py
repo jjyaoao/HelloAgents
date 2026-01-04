@@ -130,7 +130,8 @@ class A2AServer:
                                 "skill_used": skill_name,
                                 "status": "success"
                             })
-                    except:
+                    except Exception as e:
+                        logger.debug(f"技能 {skill_name} 执行失败: {e}")
                         continue
 
                 return jsonify({

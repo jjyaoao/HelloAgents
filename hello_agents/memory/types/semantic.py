@@ -634,7 +634,10 @@ class SemanticMemory(BaseMemory):
                     try:
                         if hasattr(ent._, 'confidence'):
                             confidence = getattr(ent._, 'confidence', 'N/A')
-                    except:
+                    except AttributeError as e:
+                        confidence = "N/A"
+                    except Exception as e:
+                        logger.debug(f"获取实体置信度失败: {e}")
                         confidence = "N/A"
                     
                     logger.debug(f"🏷️ spaCy识别实体: '{ent.text}' -> {ent.label_} (置信度: {confidence})")

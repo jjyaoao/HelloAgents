@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Union
 
 import requests
 
@@ -130,7 +130,7 @@ class SearchTool(Tool):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def run(self, parameters: Dict[str, Any]) -> str | Dict[str, Any]:  # type: ignore[override]
+    def run(self, parameters: Dict[str, Any]) -> Union[str, Dict[str, Any]]:  # type: ignore[override]
         query = (parameters.get("input") or parameters.get("query") or "").strip()
         if not query:
             return "错误：搜索查询不能为空"

@@ -415,8 +415,13 @@ class BFCLEvaluator:
             pred_ast = ast.parse(pred, mode='eval')
             exp_ast = ast.parse(expected, mode='eval')
             return ast.dump(pred_ast) == ast.dump(exp_ast)
-        except:
-            # 如果AST解析失败，使用字符串相似度
+        except SyntaxError as e:
+            # 语法错误，使用字符串比较
+            logger.debug(f"AST解析语法错误: {e}")
+            return pred.strip() == expected.strip()
+        except Exception as e:
+            # 其他错误，使用字符串比较
+            logger.debug(f"AST解析失败: {e}")
             return pred.strip() == expected.strip()
 
     def _evaluate_execution(self, predicted: List[Dict], expected: List[str], functions: List[Dict]) -> tuple[bool, float]:

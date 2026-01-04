@@ -1,6 +1,6 @@
 """工具注册表 - HelloAgents原生工具系统"""
 
-from typing import Optional, Any, Callable
+from typing import Optional, Any, Callable, Dict, List
 from .base import Tool
 
 class ToolRegistry:
@@ -14,8 +14,9 @@ class ToolRegistry:
     """
 
     def __init__(self):
-        self._tools: dict[str, Tool] = {}
-        self._functions: dict[str, dict[str, Any]] = {}
+        # 使用 Dict 替代 dict[str, Tool] 以保证 Python 3.9+ 兼容性
+        self._tools: Dict[str, Tool] = {}
+        self._functions: Dict[str, Dict[str, Any]] = {}
 
     def register_tool(self, tool: Tool, auto_expand: bool = True):
         """

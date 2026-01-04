@@ -2,14 +2,18 @@
 
 from typing import Optional, Iterator, TYPE_CHECKING
 import re
+import logging
 
 from ..core.agent import Agent
 from ..core.llm import HelloAgentsLLM
 from ..core.config import Config
 from ..core.message import Message
+from ..utils.parameter_converter import convert_parameter_types
 
 if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 class SimpleAgent(Agent):
     """简单的对话Agent，支持可选的工具调用"""
@@ -120,8 +124,8 @@ class SimpleAgent(Agent):
         if parameters.strip().startswith('{'):
             try:
                 param_dict = json.loads(parameters)
-                # JSON解析成功，进行类型转换
-                param_dict = self._convert_parameter_types(tool_name, param_dict)
+                # JSON解析成功，进行类型转换（使用共享工具）
+                param_dict = convert_parameter_types(tool_name, param_dict, self.tool_registry)
                 return param_dict
             except json.JSONDecodeError:
                 # JSON解析失败，继续使用其他方式
@@ -141,8 +145,8 @@ class SimpleAgent(Agent):
                 key, value = parameters.split('=', 1)
                 param_dict[key.strip()] = value.strip()
 
-            # 类型转换
-            param_dict = self._convert_parameter_types(tool_name, param_dict)
+            # 类型转换（使用共享工具）
+            param_dict = convert_parameter_types(tool_name, param_dict, self.tool_registry)
 
             # 智能推断action（如果没有指定）
             if 'action' not in param_dict:
@@ -152,63 +156,6 @@ class SimpleAgent(Agent):
             param_dict = self._infer_simple_parameters(tool_name, parameters)
 
         return param_dict
-
-    def _convert_parameter_types(self, tool_name: str, param_dict: dict) -> dict:
-        """
-        根据工具的参数定义转换参数类型
-
-        Args:
-            tool_name: 工具名称
-            param_dict: 参数字典
-
-        Returns:
-            类型转换后的参数字典
-        """
-        if not self.tool_registry:
-            return param_dict
-
-        tool = self.tool_registry.get_tool(tool_name)
-        if not tool:
-            return param_dict
-
-        # 获取工具的参数定义
-        try:
-            tool_params = tool.get_parameters()
-        except:
-            return param_dict
-
-        # 创建参数类型映射
-        param_types = {}
-        for param in tool_params:
-            param_types[param.name] = param.type
-
-        # 转换参数类型
-        converted_dict = {}
-        for key, value in param_dict.items():
-            if key in param_types:
-                param_type = param_types[key]
-                try:
-                    if param_type == 'number' or param_type == 'integer':
-                        # 转换为数字
-                        if isinstance(value, str):
-                            converted_dict[key] = float(value) if param_type == 'number' else int(value)
-                        else:
-                            converted_dict[key] = value
-                    elif param_type == 'boolean':
-                        # 转换为布尔值
-                        if isinstance(value, str):
-                            converted_dict[key] = value.lower() in ('true', '1', 'yes')
-                        else:
-                            converted_dict[key] = bool(value)
-                    else:
-                        converted_dict[key] = value
-                except (ValueError, TypeError):
-                    # 转换失败，保持原值
-                    converted_dict[key] = value
-            else:
-                converted_dict[key] = value
-
-        return converted_dict
 
     def _infer_action(self, tool_name: str, param_dict: dict) -> dict:
         """根据工具类型和参数推断action"""

@@ -537,5 +537,5 @@ class QdrantVectorStore:
         if hasattr(self, 'client') and self.client:
             try:
                 self.client.close()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"关闭Qdrant客户端时出错: {e}")
