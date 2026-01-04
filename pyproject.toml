@@ -36,7 +36,7 @@ search = [
 
 # 记忆系统依赖
 memory = [
-    "qdrant-client>=1.6.0",      # 向量数据库
+    "qdrant-client>=1.6.0,<1.16.0",  # 向量数据库（1.16.0移除了search接口）
     "neo4j>=5.0.0",              # 图数据库
     "spacy>=3.4.0",              # NLP和实体识别
     "scikit-learn>=1.0.0",       # 机器学习工具
