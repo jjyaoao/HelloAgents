@@ -449,7 +449,7 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
             数据集信息字典
         """
         try:
-            dataset = GAIADataset(level=level, local_data_path=self.local_data_path)
+            dataset = GAIADataset(level=level, local_data_dir=self.local_data_path)
             items = dataset.load()
             
             # 获取统计信息
