@@ -282,7 +282,7 @@ class HelloAgentsLLM:
             else:
                 return "gpt-3.5-turbo"
 
-    def think(self, messages: list[dict[str, str]], temperature: Optional[float] = None) -> Iterator[str]:
+    def think(self, messages: list[dict[str, str]], temperature: Optional[float] = None, is_thinking: bool = False) -> Iterator[str]:
         """
         调用大语言模型进行思考，并返回流式响应。
         这是主要的调用方法，默认使用流式响应以获得更好的用户体验。
@@ -290,28 +290,64 @@ class HelloAgentsLLM:
         Args:
             messages: 消息列表
             temperature: 温度参数，如果未提供则使用初始化时的值
+            is_thinking: 是否处于思考状态, 目前只适配了智谱AI的思考状态
 
         Yields:
             str: 流式响应的文本片段
         """
         print(f"🧠 正在调用 {self.model} 模型...")
         try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=self.max_tokens,
-                stream=True,
-            )
+            if is_thinking and self.provider == "zhipu":
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature if temperature is not None else self.temperature,
+                    max_tokens=self.max_tokens,
+                    stream=True,
+                    extra_body={ # 开启思考模式
+                        "thinking": {
+                            "type": "enabled"
+                        }
+                    }
+                )
 
-            # 处理流式响应
-            print("✅ 大语言模型响应成功:")
-            for chunk in response:
-                content = chunk.choices[0].delta.content or ""
-                if content:
-                    print(content, end="", flush=True)
-                    yield content
-            print()  # 在流式输出结束后换行
+                # 处理流式响应
+                print("✅ 大语言模型响应成功:")
+                print("\n🤔 模型思考过程:")
+                print("-" * 50)  # 添加分隔线
+                for chunk in response:
+                    delta = chunk.choices[0].delta
+                    reasoning = getattr(delta, "reasoning_content", None) or ""
+                    content = chunk.choices[0].delta.content or ""
+                    if reasoning:
+                        if is_thinking:
+                            print(reasoning, end="")
+                    if content:
+                        if is_thinking:
+                            print("\n" + "-" * 50)
+                            print("\n 模型回答：")
+                            is_thinking = False
+                        # print(content)
+                        yield content
+                print()  # 在流式输出结束后换行
+            else:
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature if temperature is not None else self.temperature,
+                    max_tokens=self.max_tokens,
+                    stream=True
+                )
+
+                # 处理流式响应
+                print("✅ 大语言模型响应成功:")
+                for chunk in response:
+                    delta = chunk.choices[0].delta
+                    content = chunk.choices[0].delta.content or ""
+                    if content:
+                        # print(content)
+                        yield content
+                print()  # 在流式输出结束后换行
 
         except Exception as e:
             print(f"❌ 调用LLM API时发生错误: {e}")
@@ -323,14 +359,34 @@ class HelloAgentsLLM:
         适用于不需要流式输出的场景。
         """
         try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=kwargs.get('temperature', self.temperature),
-                max_tokens=kwargs.get('max_tokens', self.max_tokens),
-                **{k: v for k, v in kwargs.items() if k not in ['temperature', 'max_tokens']}
-            )
-            return response.choices[0].message.content
+            # 处理思考状态
+            is_thinking = self.kwargs.get('is_thinking')
+            if is_thinking and self.provider == "zhipu":
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=kwargs.get('temperature', self.temperature),
+                    max_tokens=kwargs.get('max_tokens', self.max_tokens),
+                    extra_body={  # 开启思考模式
+                        "thinking": {
+                            "type": "enabled"
+                        }
+                    },
+                    **{k: v for k, v in kwargs.items() if k not in ['temperature', 'max_tokens']}
+                )
+                reasoning = response.choices[0].message.reasoning_content
+                print(f"🤔 模型思考过程:\n{reasoning} \n--------------------------------------")
+                print("\n 模型回答：")
+                return response.choices[0].message.content
+            else:
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=kwargs.get('temperature', self.temperature),
+                    max_tokens=kwargs.get('max_tokens', self.max_tokens),
+                    **{k: v for k, v in kwargs.items() if k not in ['temperature', 'max_tokens']}
+                )
+                return response.choices[0].message.content
         except Exception as e:
             raise HelloAgentsException(f"LLM调用失败: {str(e)}")
 
@@ -340,4 +396,5 @@ class HelloAgentsLLM:
         保持向后兼容性。
         """
         temperature = kwargs.get('temperature')
-        yield from self.think(messages, temperature)
+        is_thinking = self.kwargs.get('is_thinking')
+        yield from self.think(messages, temperature, is_thinking)
