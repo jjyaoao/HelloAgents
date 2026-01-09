@@ -169,7 +169,7 @@ class NoteTool(Tool):
                 if key == 'tags':
                     try:
                         note[key] = json.loads(value)
-                    except:
+                    except (json.JSONDecodeError, ValueError):
                         note[key] = []
                 else:
                     note[key] = value
@@ -502,10 +502,10 @@ class NoteTool(Tool):
         Returns:
             搜索结果
         """
-        query_lower = query.lower()
-
         if not query:
             return "❌ 搜索需要提供 query"
+
+        query_lower = query.lower()
         
         # 搜索匹配的笔记
         matched_notes = []

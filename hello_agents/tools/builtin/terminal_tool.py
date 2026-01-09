@@ -25,6 +25,7 @@ import subprocess
 import os
 from pathlib import Path
 import shlex
+import platform
 
 from ..base import Tool, ToolParameter
 
@@ -42,30 +43,35 @@ class TerminalTool(Tool):
     
     用法示例：
     ```python
-    terminal = TerminalTool(workspace="./project")
-    
+    # 自动检测操作系统
+    terminal = TerminalTool(workspace="./project", os_type="auto")
+
+    # 手动指定Windows
+    terminal = TerminalTool(workspace="./project", os_type="windows")
+
     # 列出文件
-    result = terminal.run({"command": "ls -la"})
-    
+    result = terminal.run({"command": "ls -la"})  # Linux/Mac
+    result = terminal.run({"command": "dir"})     # Windows
+
     # 查看文件内容
     result = terminal.run({"command": "cat README.md"})
-    
+
     # 搜索文件
     result = terminal.run({"command": "grep -r 'TODO' src/"})
-    
+
     # 查看文件前10行
     result = terminal.run({"command": "head -n 10 data.csv"})
     ```
     """
-    
-    # 允许的命令白名单
+
+    # 允许的命令白名单（跨平台）
     ALLOWED_COMMANDS = {
         # 文件列表与信息
         'ls', 'dir', 'tree',
         # 文件内容查看
-        'cat', 'head', 'tail', 'less', 'more',
+        'cat', 'type', 'head', 'tail', 'less', 'more',
         # 文件搜索
-        'find', 'grep', 'egrep', 'fgrep',
+        'find', 'where', 'grep', 'egrep', 'fgrep', 'findstr',
         # 文本处理
         'wc', 'sort', 'uniq', 'cut', 'awk', 'sed',
         # 目录操作
@@ -75,31 +81,48 @@ class TerminalTool(Tool):
         # 其他
         'echo', 'which', 'whereis',
         # 代码执行
-        'python', 'node', 'bash', 'sh',  
+        'python', 'python3', 'node', 'bash', 'sh', 'powershell', 'cmd',
     }
-    
+
     def __init__(
         self,
         workspace: str = ".",
         timeout: int = 30,
         max_output_size: int = 10 * 1024 * 1024,  # 10MB
-        allow_cd: bool = True
+        allow_cd: bool = True,
+        os_type: str = "auto"  # "auto", "windows", "linux", "mac"
     ):
         super().__init__(
             name="terminal",
-            description="命令行工具 - 执行安全的文件系统、文本处理和代码执行命令（ls, cat, grep, head, tail等）"
+            description="跨平台命令行工具 - 执行安全的文件系统、文本处理和代码执行命令（支持Windows/Linux/Mac）"
         )
-        
+
         self.workspace = Path(workspace).resolve()
         self.timeout = timeout
         self.max_output_size = max_output_size
         self.allow_cd = allow_cd
-        
+
+        # 检测或设置操作系统类型
+        if os_type == "auto":
+            self.os_type = self._detect_os()
+        else:
+            self.os_type = os_type.lower()
+
         # 当前工作目录（相对于workspace）
         self.current_dir = self.workspace
-        
+
         # 确保工作目录存在
         self.workspace.mkdir(parents=True, exist_ok=True)
+
+    def _detect_os(self) -> str:
+        """检测操作系统类型"""
+        system = platform.system().lower()
+        if system == "windows":
+            return "windows"
+        elif system == "darwin":
+            return "mac"
+        else:
+            return "linux"
     
     def run(self, parameters: Dict[str, Any]) -> str:
         """执行工具"""
@@ -188,43 +211,60 @@ class TerminalTool(Tool):
     def _execute_command(self, command: str) -> str:
         """执行命令"""
         try:
-            # 在当前目录下执行命令
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=str(self.current_dir),
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                env=os.environ.copy()
-            )
-            
+            # 根据操作系统类型调整命令执行方式
+            if self.os_type == "windows":
+                # Windows下使用cmd.exe或直接shell=True
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=str(self.current_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                    env=os.environ.copy()
+                )
+            else:
+                # Unix系统（Linux/Mac）使用shell=True
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=str(self.current_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                    env=os.environ.copy()
+                )
+
             # 合并标准输出和标准错误
             output = result.stdout
             if result.stderr:
                 output += f"\n[stderr]\n{result.stderr}"
-            
+
             # 检查输出大小
             if len(output) > self.max_output_size:
                 output = output[:self.max_output_size]
                 output += f"\n\n⚠️ 输出被截断（超过 {self.max_output_size} 字节）"
-            
+
             # 添加返回码信息
             if result.returncode != 0:
                 output = f"⚠️ 命令返回码: {result.returncode}\n\n{output}"
-            
+
             return output if output else "✅ 命令执行成功（无输出）"
-            
+
         except subprocess.TimeoutExpired:
             return f"❌ 命令执行超时（超过 {self.timeout} 秒）"
         except Exception as e:
             return f"❌ 命令执行失败: {e}"
-    
+
     def get_current_dir(self) -> str:
         """获取当前工作目录"""
         return str(self.current_dir)
-    
+
     def reset_dir(self):
         """重置到工作目录根"""
         self.current_dir = self.workspace
+
+    def get_os_type(self) -> str:
+        """获取当前操作系统类型"""
+        return self.os_type
 

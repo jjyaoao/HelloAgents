@@ -172,7 +172,7 @@ class ContextBuilder:
                 rag_results = self.rag_tool.run({
                     "action": "search",
                     "query": user_query,
-                    "top_k": 5
+                    "limit": 5
                 })
                 if rag_results and "未找到" not in rag_results and "错误" not in rag_results:
                     packets.append(ContextPacket(

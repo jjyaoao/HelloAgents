@@ -377,17 +377,35 @@ class QdrantVectorStore:
                 search_params = models.SearchParams(hnsw_ef=self.search_ef, exact=self.search_exact)
             except Exception:
                 search_params = None
-            search_result = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                query_filter=query_filter,
-                limit=limit,
-                score_threshold=score_threshold,
-                with_payload=True,
-                with_vectors=False,
-                search_params=search_params
-            )
-            
+
+            # 兼容新旧 qdrant-client API
+            # 1.16.0+ 使用 query_points(), <1.16.0 使用 search()
+            try:
+                # 尝试新API (qdrant-client >= 1.16.0)
+                response = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=query_vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vectors=False,
+                    search_params=search_params
+                )
+                search_result = response.points
+            except AttributeError:
+                # 回退到旧API (qdrant-client < 1.16.0)
+                search_result = self.client.search(
+                    collection_name=self.collection_name,
+                    query_vector=query_vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vectors=False,
+                    search_params=search_params
+                )
+
             # 转换结果格式
             results = []
             for hit in search_result:
@@ -397,7 +415,7 @@ class QdrantVectorStore:
                     "metadata": hit.payload or {}
                 }
                 results.append(result)
-            
+
             logger.debug(f"🔍 Qdrant搜索返回 {len(results)} 个结果")
             return results
             
