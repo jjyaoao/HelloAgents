@@ -85,7 +85,7 @@ class ReActAgent(Agent):
         # 设置提示词模板：用户自定义优先，否则使用默认模板
         self.prompt_template = custom_prompt if custom_prompt else DEFAULT_REACT_PROMPT
 
-    def add_tool(self, tool):
+    def add_tool(self, tool, auto_expand: bool = True):
         """
         添加工具到工具注册表
         支持MCP工具的自动展开
@@ -93,28 +93,7 @@ class ReActAgent(Agent):
         Args:
             tool: 工具实例(可以是普通Tool或MCPTool)
         """
-        # 检查是否是MCP工具
-        if hasattr(tool, 'auto_expand') and tool.auto_expand:
-            # MCP工具会自动展开为多个工具
-            if hasattr(tool, '_available_tools') and tool._available_tools:
-                for mcp_tool in tool._available_tools:
-                    # 创建包装工具
-                    from ..tools.base import Tool
-                    wrapped_tool = Tool(
-                        name=f"{tool.name}_{mcp_tool['name']}",
-                        description=mcp_tool.get('description', ''),
-                        func=lambda input_text, t=tool, tn=mcp_tool['name']: t.run({
-                            "action": "call_tool",
-                            "tool_name": tn,
-                            "arguments": {"input": input_text}
-                        })
-                    )
-                    self.tool_registry.register_tool(wrapped_tool)
-                print(f"✅ MCP工具 '{tool.name}' 已展开为 {len(tool._available_tools)} 个独立工具")
-            else:
-                self.tool_registry.register_tool(tool)
-        else:
-            self.tool_registry.register_tool(tool)
+        self.tool_registry.register_tool(tool, auto_expand=auto_expand)
 
     def run(self, input_text: str, **kwargs) -> str:
         """
@@ -146,7 +125,10 @@ class ReActAgent(Agent):
             )
             
             # 调用LLM
-            messages = [{"role": "user", "content": prompt}]
+            messages = []
+            if self.system_prompt:
+                messages.append({"role": "system", "content": self.system_prompt})
+            messages.append({"role": "user", "content": prompt})
             response_text = self.llm.invoke(messages, **kwargs)
             
             if not response_text:
@@ -183,7 +165,7 @@ class ReActAgent(Agent):
             print(f"🎬 行动: {tool_name}[{tool_input}]")
             
             # 调用工具
-            observation = self.tool_registry.execute_tool(tool_name, tool_input)
+            observation = self._execute_tool_call(tool_name, tool_input)
             print(f"👀 观察: {observation}")
             
             # 更新历史
@@ -220,3 +202,26 @@ class ReActAgent(Agent):
         """解析行动输入"""
         match = re.match(r"\w+\[(.*)\]", action_text)
         return match.group(1) if match else ""
+
+    def _execute_tool_call(self, tool_name: str, parameters: str) -> str:
+        """执行工具调用"""
+        if not self.tool_registry:
+            return f"❌ 错误：未配置工具注册表"
+
+        try:
+            # 获取Tool对象
+            tool = self.tool_registry.get_tool(tool_name)
+            if not tool:
+                return f"❌ 错误：未找到工具 '{tool_name}'"
+
+            from json import loads, JSONDecodeError
+            try:
+                param_dict = loads(parameters)
+            except JSONDecodeError:
+                param_dict = {"input": parameters}
+
+            # 调用工具
+            return tool.run(param_dict)
+
+        except Exception as e:
+            return f"❌ 工具调用失败：{str(e)}"

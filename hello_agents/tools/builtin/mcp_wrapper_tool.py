@@ -97,7 +97,7 @@ class MCPWrappedTool(Tool):
         """
         return self._parameters
 
-    def run(self, params: Dict[str, Any]) -> str:
+    def run(self, parameters: Dict[str, Any]) -> str:
         """
         执行MCP工具
 
@@ -111,7 +111,7 @@ class MCPWrappedTool(Tool):
         mcp_params = {
             "action": "call_tool",
             "tool_name": self.mcp_tool_name,
-            "arguments": params
+            "arguments": parameters
         }
 
         # 调用父MCP工具

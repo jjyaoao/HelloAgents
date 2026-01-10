@@ -23,8 +23,8 @@ class MemoryTool(Tool):
     def __init__(
         self,
         user_id: str = "default_user",
-        memory_config: MemoryConfig = None,
-        memory_types: List[str] = None,
+        memory_config: Optional[MemoryConfig] = None,
+        memory_types: Optional[List[str]] = None,
         expandable: bool = False
     ):
         super().__init__(
@@ -144,8 +144,8 @@ class MemoryTool(Tool):
         content: str = "",
         memory_type: str = "working",
         importance: float = 0.5,
-        file_path: str = None,
-        modality: str = None
+        file_path: Optional[str] = None,
+        modality: Optional[str] = None
     ) -> str:
         """添加记忆
 
@@ -207,7 +207,7 @@ class MemoryTool(Tool):
         self,
         query: str,
         limit: int = 5,
-        memory_type: str = None,
+        memory_type: Optional[str] = None,
         min_importance: float = 0.1
     ) -> str:
         """搜索记忆
@@ -392,13 +392,13 @@ class MemoryTool(Tool):
             )
 
     @tool_action("memory_update", "更新已存在的记忆")
-    def _update_memory(self, memory_id: str, content: str = None, importance: float = None) -> str:
+    def _update_memory(self, memory_id: str, content: Optional[str] = None, importance: float = 0.7) -> str:
         """更新记忆
 
         Args:
             memory_id: 要更新的记忆ID
             content: 新的记忆内容
-            importance: 新的重要性分数
+            importance: 新的重要性分数, 默认0.7
 
         Returns:
             执行结果
