@@ -309,7 +309,7 @@ class HelloAgentsLLM:
             for chunk in response:
                 content = chunk.choices[0].delta.content or ""
                 if content:
-                    print(content, end="", flush=True)
+                    #print(content, end="", flush=True),这行代码会导致重复输出模型的回答
                     yield content
             print()  # 在流式输出结束后换行
 
