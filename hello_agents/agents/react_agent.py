@@ -9,7 +9,8 @@ from ..core.message import Message
 from ..tools.registry import ToolRegistry
 
 # 默认ReAct提示词模板
-DEFAULT_REACT_PROMPT = """你是一个具备推理和行动能力的AI助手。你可以通过思考分析问题，然后调用合适的工具来获取信息，最终给出准确的答案。
+DEFAULT_REACT_PROMPT = """你是一个具备推理和行动能力的AI助手。你一共有{max_steps}步行动机会。你可以通过思考分析问题，然后调用合适的工具来获取信息，合理规划你的行动，最终给出准确的答案。
+
 
 ## 可用工具
 {tools}
@@ -34,7 +35,7 @@ Action: 选择合适的工具获取信息，格式为：
 ## 执行历史
 {history}
 
-现在开始你的推理和行动："""
+现在是第{current_step}步,现在开始你的推理和行动："""
 
 class ReActAgent(Agent):
     """
@@ -140,9 +141,11 @@ class ReActAgent(Agent):
             tools_desc = self.tool_registry.get_tools_description()
             history_str = "\n".join(self.current_history)
             prompt = self.prompt_template.format(
+                max_steps=self.max_steps,
                 tools=tools_desc,
                 question=input_text,
-                history=history_str
+                history=history_str,
+                current_step=current_step
             )
             
             # 调用LLM
