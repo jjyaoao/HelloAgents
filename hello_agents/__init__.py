@@ -34,6 +34,22 @@ from .tools.builtin.calculator import CalculatorTool, calculate
 from .tools.chain import ToolChain, ToolChainManager
 from .tools.async_executor import AsyncToolExecutor
 
+# 评估工具
+from .tools.builtin.llm_judge_evaluation_tool import UniversalLLMJudgeTool, UniversalLLMJudgeDataset
+from .tools.builtin.win_rate_evaluation_tool import UniversalWinRateTool, UniversalWinRateDataset
+
+# 评估框架
+from .evaluation import (
+    BFCLDataset, BFCLEvaluator,
+    GAIADataset, GAIAEvaluator,
+    AIDataset,
+    UniversalDataset,
+    LLMJudgeEvaluator,
+    WinRateEvaluator,
+    UniversalLLMJudgeEvaluator,
+    UniversalWinRateEvaluator,
+)
+
 __all__ = [
     # 版本信息
     "__version__",
@@ -64,5 +80,23 @@ __all__ = [
     "ToolChain",
     "ToolChainManager",
     "AsyncToolExecutor",
+
+    # 评估工具
+    "UniversalLLMJudgeTool",
+    "UniversalLLMJudgeDataset",
+    "UniversalWinRateTool",
+    "UniversalWinRateDataset",
+
+    # 评估框架
+    "BFCLDataset",
+    "BFCLEvaluator",
+    "GAIADataset",
+    "GAIAEvaluator",
+    "AIDataset",
+    "UniversalDataset",
+    "LLMJudgeEvaluator",
+    "WinRateEvaluator",
+    "UniversalLLMJudgeEvaluator",
+    "UniversalWinRateEvaluator",
 ]
 
