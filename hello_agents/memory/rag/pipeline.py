@@ -451,6 +451,65 @@ def _preprocess_markdown_for_embedding(text: str) -> str:
     return text.strip()
 
 
+def _normalize_vectors(vecs, expected_dim: int) -> List[List[float]]:
+    """
+    将 embedder.encode() 返回的向量统一转换为 List[List[float]] 格式。
+
+    支持的输入格式:
+    - numpy.ndarray (单个向量)
+    - List[numpy.ndarray] (多个向量)
+    - List[List[float]] (已转换格式)
+
+    Args:
+        vecs: embedder.encode() 返回的向量
+        expected_dim: 期望的向量维度
+
+    Returns:
+        List[List[float]]: 标准化的向量列表
+    """
+    result: List[List[float]] = []
+
+    # 处理单个 numpy.ndarray
+    if hasattr(vecs, "tolist") and not isinstance(vecs, list):
+        vecs = [vecs.tolist()]
+
+    # 确保 vecs 是列表
+    if not isinstance(vecs, list):
+        vecs = list(vecs)
+
+    if not vecs:
+        return result
+
+    # 判断是否是嵌套列表结构
+    is_nested = isinstance(vecs[0], (list, tuple))
+
+    if not is_nested:
+        # vecs 是 List[numpy.ndarray]，需要逐个转换
+        for v in vecs:
+            if hasattr(v, "tolist"):
+                v = v.tolist()
+            v_list = [float(x) for x in v]
+            # 维度校验和修正
+            if len(v_list) != expected_dim:
+                if len(v_list) < expected_dim:
+                    v_list.extend([0.0] * (expected_dim - len(v_list)))
+                else:
+                    v_list = v_list[:expected_dim]
+            result.append(v_list)
+    else:
+        # vecs 已经是 List[List[float]] 或类似格式
+        for v in vecs:
+            v_list = [float(x) for x in v]
+            if len(v_list) != expected_dim:
+                if len(v_list) < expected_dim:
+                    v_list.extend([0.0] * (expected_dim - len(v_list)))
+                else:
+                    v_list = v_list[:expected_dim]
+            result.append(v_list)
+
+    return result
+
+
 def _create_default_vector_store(dimension: int = None) -> QdrantVectorStore:
     """
     Create default Qdrant vector store with RAG-optimized settings.
@@ -479,7 +538,7 @@ def _create_default_vector_store(dimension: int = None) -> QdrantVectorStore:
 
 def index_chunks(
     store = None, 
-    chunks: List[Dict] = None, 
+    chunks: List[Dict] = None,
     cache_db: Optional[str] = None, 
     batch_size: int = 64,
     rag_namespace: str = "default"
@@ -517,49 +576,13 @@ def index_chunks(
         try:
             # Use unified embedder directly (handles caching internally)
             part_vecs = embedder.encode(part)
-            
-            # Normalize to List[List[float]]
-            if not isinstance(part_vecs, list):
-                # 单个numpy数组转为列表中的列表
-                if hasattr(part_vecs, "tolist"):
-                    part_vecs = [part_vecs.tolist()]
-                else:
-                    part_vecs = [list(part_vecs)]
-            else:
-                # 检查是否是嵌套列表
-                if part_vecs and not isinstance(part_vecs[0], (list, tuple)) and hasattr(part_vecs[0], "__len__"):
-                    # numpy数组列表 -> 转换每个数组
-                    normalized_vecs = []
-                    for v in part_vecs:
-                        if hasattr(v, "tolist"):
-                            normalized_vecs.append(v.tolist())
-                        else:
-                            normalized_vecs.append(list(v))
-                    part_vecs = normalized_vecs
-                elif part_vecs and not isinstance(part_vecs[0], (list, tuple)):
-                    # 单个向量被误判为列表，实际应该包装成[[...]]
-                    if hasattr(part_vecs, "tolist"):
-                        part_vecs = [part_vecs.tolist()]
-                    else:
-                        part_vecs = [list(part_vecs)]
-            
-            for v in part_vecs:
-                try:
-                    # 确保向量是float列表
-                    if hasattr(v, "tolist"):
-                        v = v.tolist()
-                    v_norm = [float(x) for x in v]
-                    if len(v_norm) != dimension:
-                        print(f"[WARNING] 向量维度异常: 期望{dimension}, 实际{len(v_norm)}")
-                        # 用零向量填充或截断
-                        if len(v_norm) < dimension:
-                            v_norm.extend([0.0] * (dimension - len(v_norm)))
-                        else:
-                            v_norm = v_norm[:dimension]
-                    vecs.append(v_norm)
-                except Exception as e:
-                    print(f"[WARNING] 向量转换失败: {e}, 使用零向量")
-                    vecs.append([0.0] * dimension)
+
+
+            # 使用统一的归一化函数
+            normalized = _normalize_vectors(part_vecs, dimension)
+            vecs.extend(normalized)
+
+
                 
         except Exception as e:
             print(f"[WARNING] Batch {i} encoding failed: {e}")
@@ -574,26 +597,11 @@ def index_chunks(
                     time.sleep(2)  # 等待2秒避免频率限制
                     
                     small_vecs = embedder.encode(small_part)
-                    # Normalize to List[List[float]]
-                    if isinstance(small_vecs, list) and small_vecs and not isinstance(small_vecs[0], list):
-                        small_vecs = [small_vecs]
-                    
-                    for v in small_vecs:
-                        if hasattr(v, "tolist"):
-                            v = v.tolist()
-                        try:
-                            v_norm = [float(x) for x in v]
-                            if len(v_norm) != dimension:
-                                print(f"[WARNING] 向量维度异常: 期望{dimension}, 实际{len(v_norm)}")
-                                if len(v_norm) < dimension:
-                                    v_norm.extend([0.0] * (dimension - len(v_norm)))
-                                else:
-                                    v_norm = v_norm[:dimension]
-                            vecs.append(v_norm)
-                            success = True
-                        except Exception as e2:
-                            print(f"[WARNING] 小批次向量转换失败: {e2}")
-                            vecs.append([0.0] * dimension)
+                    # 使用统一的归一化函数
+                    normalized = _normalize_vectors(small_vecs, dimension)
+                    vecs.extend(normalized)
+                    success = True
+
                 except Exception as e2:
                     print(f"[WARNING] 小批次 {j//8} 仍然失败: {e2}")
                     # 为这个小批次创建零向量
