@@ -15,7 +15,7 @@ except ImportError:
     TRL_AVAILABLE = False
 
 from .trainers import SFTTrainerWrapper, GRPOTrainerWrapper, PPOTrainerWrapper
-from .datasets import (
+from .rl_datasets  import (
     GSM8KDataset,
     create_math_dataset,
     create_sft_dataset,
