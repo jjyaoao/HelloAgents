@@ -24,18 +24,34 @@ class ToolRegistry:
         Args:
             tool: Tool实例
             auto_expand: 是否自动展开可展开的工具（默认True）
+
+        支持两种工具展开方式：
+        1. MCP工具：通过 auto_expand 属性标记
+        2. 普通可展开工具：通过 expandable 属性标记
         """
-        # 检查工具是否可展开
-        if auto_expand and hasattr(tool, 'expandable') and tool.expandable:
-            expanded_tools = tool.get_expanded_tools()
-            if expanded_tools:
-                # 注册所有展开的子工具
-                for sub_tool in expanded_tools:
-                    if sub_tool.name in self._tools:
-                        print(f"⚠️ 警告：工具 '{sub_tool.name}' 已存在，将被覆盖。")
-                    self._tools[sub_tool.name] = sub_tool
-                print(f"✅ 工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具")
-                return
+        expanded_tools = None
+        tool_type = "工具"
+
+        # 检查是否需要展开工具
+        if auto_expand:
+            # 处理 MCP 工具（使用 auto_expand 属性）
+            if hasattr(tool, 'auto_expand') and tool.auto_expand:
+                expanded_tools = tool.get_expanded_tools()
+                if expanded_tools:
+                    tool_type = "MCP工具"
+
+            # 处理普通可展开工具（使用 expandable 属性）
+            if expanded_tools is None and hasattr(tool, 'expandable') and tool.expandable:
+                expanded_tools = tool.get_expanded_tools()
+
+        # 注册展开的子工具
+        if expanded_tools:
+            for sub_tool in expanded_tools:
+                if sub_tool.name in self._tools:
+                    print(f"⚠️ 警告：工具 '{sub_tool.name}' 已存在，将被覆盖。")
+                self._tools[sub_tool.name] = sub_tool
+            print(f"✅ {tool_type} '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具")
+            return
 
         # 普通工具或不展开的工具
         if tool.name in self._tools:

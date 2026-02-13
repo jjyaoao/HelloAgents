@@ -339,23 +339,20 @@ class FunctionCallAgent(Agent):
         self.add_message(Message(final_response, "assistant"))
         return final_response
 
-    def add_tool(self, tool) -> None:
-        """便捷方法：将工具注册到当前Agent"""
+    def add_tool(self, tool, auto_expand: bool = True) -> None:
+        """
+        添加工具到Agent（便利方法）
+
+        Args:
+            tool: Tool对象
+            auto_expand: 是否自动展开可展开的工具（默认True）
+        """
         if not self.tool_registry:
             from ..tools.registry import ToolRegistry
-
             self.tool_registry = ToolRegistry()
             self.enable_tool_calling = True
 
-        if hasattr(tool, "auto_expand") and getattr(tool, "auto_expand"):
-            expanded_tools = tool.get_expanded_tools()
-            if expanded_tools:
-                for expanded_tool in expanded_tools:
-                    self.tool_registry.register_tool(expanded_tool)
-                print(f"✅ MCP工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具")
-                return
-
-        self.tool_registry.register_tool(tool)
+        self.tool_registry.register_tool(tool, auto_expand=auto_expand)
 
     def remove_tool(self, tool_name: str) -> bool:
         if self.tool_registry:
