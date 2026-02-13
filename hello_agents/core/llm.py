@@ -66,10 +66,9 @@ class HelloAgentsLLM:
 
         # 自动检测provider或使用指定的provider
         requested_provider = (provider or "").lower() if provider else None
-        self.provider = provider or self._auto_detect_provider(api_key, base_url)
+        self.provider = requested_provider or self._auto_detect_provider(api_key, base_url)
 
         if requested_provider == "custom":
-            self.provider = "custom"
             self.api_key = api_key or os.getenv("LLM_API_KEY")
             self.base_url = base_url or os.getenv("LLM_BASE_URL")
         else:
