@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hello-agents"
-version = "0.2.8"
+version = "0.2.9"
 description = "灵活、可扩展的多智能体框架 - 基于OpenAI原生API"
 readme = "README.md"
 license = {text = "CC-BY-NC-SA-4.0"}
