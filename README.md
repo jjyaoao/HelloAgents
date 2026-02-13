@@ -23,7 +23,7 @@ HelloAgents是一个专为学习和教学设计的多智能体框架，基于Ope
 - **📦 历史版本**：[Releases 页面](https://github.com/jjyaoao/HelloAgents/releases)
   提供从 v0.1.1 到 v0.2.9 的所有版本，每个版本对应教程的特定章节，可根据学习进度选择对应版本。
 
-## �🚀 快速开始
+## 🚀 快速开始
 
 ### 系统要求
 
