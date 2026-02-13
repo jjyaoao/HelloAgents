@@ -10,7 +10,17 @@ HelloAgents是一个专为学习和教学设计的多智能体框架，基于Ope
 
 为了彻底贯彻轻量级与教学友好的理念，HelloAgents在架构上做出了一个关键的简化：除了核心的Agent类，一切皆为Tools。在许多其他框架中需要独立学习的Memory（记忆）、RAG（检索增强生成）、RL（强化学习）、MCP（协议）等模块，在HelloAgents中都被统一抽象为一种“工具”。这种设计的初衷是消除不必要的抽象层，让学习者可以回归到最直观的“智能体调用工具”这一核心逻辑上，从而真正实现快速上手和深入理解的统一。
 
-## 🚀 快速开始
+## 版本说明
+
+> **重要提示**：本仓库目前维护两个版本
+
+- **📚 学习版本（推荐初学者）**：[learn_version 分支](https://github.com/jjyaoao/HelloAgents/tree/learn_version)
+  与 [Datawhale Hello-Agents 教程](https://github.com/datawhalechina/hello-agents) 正文完全对应的稳定版本，适合跟随教程学习使用。
+
+- **🚀 开发版本（当前分支）**：持续迭代中的最新代码
+  包含新功能和改进，部分实现可能与教程内容存在差异。如需学习教程，请切换到 `learn_version` 分支。
+
+## �🚀 快速开始
 
 ### 系统要求
 
