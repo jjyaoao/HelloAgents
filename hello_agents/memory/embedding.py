@@ -6,10 +6,10 @@
 - 通过环境变量优先级：dashscope > local > tfidf。
 
 环境变量：
-- EMBED_MODEL_TYPE: "dashscope" | "local" | "tfidf"（默认 dashscope）
-- EMBED_MODEL_NAME: 模型名称（dashscope默认 text-embedding-v3；local默认 sentence-transformers/all-MiniLM-L6-v2）
+- EMBED_MODEL_TYPE: "dashscope" | "ollama" | "local" | "tfidf"（默认 dashscope）
+- EMBED_MODEL_NAME: 模型名称（dashscope默认 text-embedding-v3；ollama默认 qwen3-embedding:0.6b；local默认 sentence-transformers/all-MiniLM-L6-v2）
 - EMBED_API_KEY: Embedding API Key（统一命名）
-- EMBED_BASE_URL: Embedding Base URL（统一命名，可选）
+- EMBED_BASE_URL: Embedding Base URL（统一命名，ollama 必需）
 """
 
 from typing import List, Union, Optional
@@ -223,6 +223,114 @@ class DashScopeEmbedding(EmbeddingModel):
         return int(self._dimension or 0)
 
 
+class OllamaEmbedding(EmbeddingModel):
+    """Ollama Embedding API
+
+    行为：
+    - 优先使用批量接口 /api/embed（v0.2.0+ 支持）
+    - 如果批量接口不可用，降级为单条接口 /api/embeddings 循环调用
+    - 批量接口返回：{"embeddings": [[...], [...]]}
+    - 单条接口返回：{"embedding": [...]}
+    """
+
+    def __init__(self, model_name: str = "qwen3-embedding:0.6b", api_key: Optional[str] = None, base_url: Optional[str] = None):
+        self.model_name = model_name
+        self.api_key = api_key  # Ollama 通常不需要 API Key，但保留参数以保持接口一致性
+        if not base_url:
+            raise ValueError("Ollama Embedding 需要提供 base_url（环境变量 EMBED_BASE_URL）")
+        self.base_url = base_url.rstrip("/")
+        # 确保 URL 以 /api 结尾
+        if not self.base_url.endswith("/api"):
+            self.base_url = self.base_url + "/api"
+        self._dimension = None
+        self._batch_supported = None  # 缓存批量接口是否可用
+        # 探测维度
+        test = self.encode("health_check")
+        self._dimension = len(test)
+
+    def _encode_batch(self, inputs: List[str]) -> List[np.ndarray]:
+        """使用批量接口编码（v0.2.0+）"""
+        import requests
+
+        url = f"{self.base_url}/embed"
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        payload = {"model": self.model_name, "input": inputs}
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+
+        if resp.status_code >= 400:
+            # 批量接口不可用，返回 None 触发降级
+            return None
+
+        data = resp.json()
+        # 批量接口返回格式：{"embeddings": [[...], [...]]}
+        embeddings = data.get("embeddings")
+        if embeddings is None:
+            return None
+
+        return [np.array(emb) for emb in embeddings]
+
+    def _encode_single(self, inputs: List[str]) -> List[np.ndarray]:
+        """使用单条接口编码（逐个调用）"""
+        import requests
+
+        url = f"{self.base_url}/embeddings"
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        vecs = []
+        for text in inputs:
+            payload = {"model": self.model_name, "prompt": text}
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            if resp.status_code >= 400:
+                raise RuntimeError(f"Ollama Embedding 调用失败: {resp.status_code} {resp.text}")
+            data = resp.json()
+            # 单条接口返回格式：{"embedding": [...]}
+            embedding = data.get("embedding")
+            if embedding is None:
+                raise RuntimeError(f"Ollama 返回格式不匹配: {data}")
+            vecs.append(np.array(embedding))
+
+        return vecs
+
+    def encode(self, texts: Union[str, List[str]]) -> Union[np.ndarray, List[np.ndarray]]:
+        if isinstance(texts, str):
+            inputs = [texts]
+            single = True
+        else:
+            inputs = list(texts)
+            single = False
+
+        # 首次尝试探测批量接口是否可用
+        if self._batch_supported is None and len(inputs) > 1:
+            vecs = self._encode_batch(inputs)
+            if vecs is not None:
+                self._batch_supported = True
+            else:
+                self._batch_supported = False
+
+        # 根据探测结果选择接口
+        if self._batch_supported:
+            vecs = self._encode_batch(inputs)
+            if vecs is None:
+                # 批量接口突然不可用，降级到单条
+                self._batch_supported = False
+                vecs = self._encode_single(inputs)
+        else:
+            vecs = self._encode_single(inputs)
+
+        if single:
+            return vecs[0]
+        return vecs
+
+    @property
+    def dimension(self) -> int:
+        return int(self._dimension or 0)
+
+
 # ==============
 # 工厂与回退
 # ==============
@@ -230,13 +338,15 @@ class DashScopeEmbedding(EmbeddingModel):
 def create_embedding_model(model_type: str = "local", **kwargs) -> EmbeddingModel:
     """创建嵌入模型实例
 
-    model_type: "dashscope" | "local" | "tfidf"
-    kwargs: model_name, api_key
+    model_type: "dashscope" | "ollama" | "local" | "tfidf"
+    kwargs: model_name, api_key, base_url
     """
     if model_type in ("local", "sentence_transformer", "huggingface"):
         return LocalTransformerEmbedding(**kwargs)
     elif model_type == "dashscope":
         return DashScopeEmbedding(**kwargs)
+    elif model_type == "ollama":
+        return OllamaEmbedding(**kwargs)
     elif model_type == "tfidf":
         return TFIDFEmbedding(**kwargs)
     else:
@@ -271,7 +381,12 @@ _embedder: Optional[EmbeddingModel] = None
 def _build_embedder() -> EmbeddingModel:
     preferred = os.getenv("EMBED_MODEL_TYPE", "dashscope").strip()
     # 根据提供商选择默认模型
-    default_model = "text-embedding-v3" if preferred == "dashscope" else "sentence-transformers/all-MiniLM-L6-v2"
+    if preferred == "dashscope":
+        default_model = "text-embedding-v3"
+    elif preferred == "ollama":
+        default_model = "qwen3-embedding:0.6b"
+    else:
+        default_model = "sentence-transformers/all-MiniLM-L6-v2"
     model_name = os.getenv("EMBED_MODEL_NAME", default_model).strip()
     kwargs = {}
     if model_name:
