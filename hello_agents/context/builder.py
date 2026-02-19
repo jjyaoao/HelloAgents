@@ -140,12 +140,13 @@ class ContextBuilder:
         if self.memory_tool:
             try:
                 # 搜索任务状态相关记忆
-                state_results = self.memory_tool.execute(
-                    "search",
-                    query="(任务状态 OR 子目标 OR 结论 OR 阻塞)",
-                    min_importance=0.7,
-                    limit=5
-                )
+                state_results = self.memory_tool.run({
+                    "action": "search",
+                    "query": "(任务状态 OR 子目标 OR 结论 OR 阻塞)",
+                    "min_importance": 0.7,
+                    "limit": 5
+                })
+
                 if state_results and "未找到" not in state_results:
                     packets.append(ContextPacket(
                         content=state_results,
@@ -153,11 +154,12 @@ class ContextBuilder:
                     ))
                 
                 # 搜索与当前查询相关的记忆
-                related_results = self.memory_tool.execute(
-                    "search",
-                    query=user_query,
-                    limit=5
-                )
+                related_results = self.memory_tool.run({
+                    "action": "search",
+                    "query": user_query,
+                    "limit": 5
+                })
+
                 if related_results and "未找到" not in related_results:
                     packets.append(ContextPacket(
                         content=related_results,

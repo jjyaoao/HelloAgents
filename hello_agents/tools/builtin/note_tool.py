@@ -269,9 +269,9 @@ class NoteTool(Tool):
             ),
             ToolParameter(
                 name="tags",
-                type="array",
+                type="string",
                 description="标签列表（可选）",
-                required=False
+                required=False,
             ),
             ToolParameter(
                 name="note_id",

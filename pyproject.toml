@@ -28,6 +28,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# 开发与测试（含 evaluation 链所需依赖，便于直接运行 pytest）
+dev = [
+    "pytest>=7.0.0",
+    "huggingface_hub>=0.20.0,<1.0.0",
+]
+
 # 搜索功能依赖
 search = [
     "tavily-python>=0.7.12",

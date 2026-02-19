@@ -64,6 +64,7 @@ class MemoryTool(Tool):
 
         action = parameters.get("action")
 
+
         # 根据action调用对应的方法，传入提取的参数
         if action == "add":
             return self._add_memory(

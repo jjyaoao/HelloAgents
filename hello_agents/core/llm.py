@@ -318,19 +318,29 @@ class HelloAgentsLLM:
             raise HelloAgentsException(f"LLM调用失败: {str(e)}")
 
     def invoke(self, messages: list[dict[str, str]], **kwargs) -> str:
-        """
-        非流式调用LLM，返回完整响应。
-        适用于不需要流式输出的场景。
-        """
         try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=kwargs.get('temperature', self.temperature),
-                max_tokens=kwargs.get('max_tokens', self.max_tokens),
-                **{k: v for k, v in kwargs.items() if k not in ['temperature', 'max_tokens']}
-            )
+            params = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": kwargs.get("temperature", self.temperature),
+            }
+
+            # 只有当 max_tokens 不是 None 时才添加
+            max_tokens_value = kwargs.get("max_tokens", self.max_tokens)
+            if max_tokens_value is not None:
+                params["max_tokens"] = max_tokens_value
+
+            # 其他额外参数
+            extra_params = {
+                k: v for k, v in kwargs.items()
+                if k not in ["temperature", "max_tokens"]
+            }
+            params.update(extra_params)
+
+            response = self._client.chat.completions.create(**params)
+
             return response.choices[0].message.content
+
         except Exception as e:
             raise HelloAgentsException(f"LLM调用失败: {str(e)}")
 
