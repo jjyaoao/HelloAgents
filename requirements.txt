@@ -1,64 +1,11 @@
-# 核心依赖 - 基础功能必需
+# HelloAgents v1.0.0 核心依赖
+# 安装：pip install hello-agents
+
 openai>=1.0.0,<2.0.0
 requests>=2.25.0,<3.0.0
 python-dotenv>=0.19.0,<2.0.0
 pydantic>=2.0.0,<3.0.0
-beautifulsoup4>=4.9.0,<5.0.0
 numpy>=2.0.0,<3.0.0
 networkx>=2.6.0,<4.0.0
 tiktoken>=0.5.0
-
-# 搜索功能依赖 - 可选安装: pip install hello-agents[search]
-# tavily-python>=0.7.12
-# google-search-results>=2.4.2
-
-# 记忆系统依赖 - 可选安装: pip install hello-agents[memory]
-# qdrant-client>=1.9.0,<1.16.0  # 1.16.0移除了search接口
-# neo4j>=5.0.0
-# spacy>=3.4.0
-# scikit-learn>=1.0.0
-
-# RAG系统依赖 - 可选安装: pip install hello-agents[rag]
-# scikit-learn>=1.0.0
-# transformers>=4.20.0
-# torch>=1.12.0
-# sentence-transformers>=2.2.0
-# markitdown>=0.0.1
-# pypdf>=3.9.0
-# pdfminer.six>=20221105
-
-# 协议支持依赖 - 可选安装: pip install hello-agents[protocols]
-# fastmcp>=2.0.0,<3.0.0
-# a2a-sdk>=0.1.0
-
-# 评估系统依赖 - 可选安装: pip install hello-agents[evaluation]
-# datasets>=2.14.0                 # HuggingFace数据集加载
-# huggingface_hub>=0.20.0,<1.0.0   # HuggingFace Hub API
-# evaluate>=0.4.0,<1.0.0           # 评估工具
-# pandas>=2.0.0,<3.0.0             # 数据处理和分析
-# matplotlib>=3.7.0,<4.0.0         # 可视化(可选)
-# seaborn>=0.12.0,<1.0.0           # 高级可视化(可选)
-# tqdm>=4.65.0,<5.0.0              # 进度条显示
-# gradio>=4.0.0,<5.0.0             # 人工验证界面
-
-#
-# BFCL评估依赖 - ⚠️ 与numpy>=2.0冲突，需独立虚拟环境手动安装
-# bfcl-eval强制要求numpy==1.26.4，与核心依赖numpy>=2.0完全不兼容
-# 使用方法：
-#   uv venv .venv-bfcl
-#   source .venv-bfcl/bin/activate  # Windows: .venv-bfcl\Scripts\activate
-#   uv pip install openai requests python-dotenv pydantic beautifulsoup4 networkx
-#   uv pip install "numpy==1.26.4" bfcl-eval datasets pandas tqdm huggingface_hub evaluate
-
-# RL训练系统依赖 - 可选安装: pip install hello-agents[rl]
-# trl>=0.24.0                      # Transformer Reinforcement Learning
-# transformers>=4.20.0             # Transformer模型
-# torch>=2.0.0                     # PyTorch
-# datasets>=2.14.0                 # 数据集加载
-# accelerate>=0.20.0               # 分布式训练加速
-# peft>=0.5.0                      # LoRA等参数高效微调
-# bitsandbytes>=0.41.0             # 量化支持
-# wandb>=0.15.0                    # 训练监控（可选）
-# tensorboard>=2.13.0              # TensorBoard支持（可选）
-
-# 完整功能安装: pip install hello-agents[all]
+pyyaml>=6.0.0

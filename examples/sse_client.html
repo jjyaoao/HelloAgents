@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HelloAgents SSE 客户端示例</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 200px;
+            max-height: 600px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .event {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background: white;
+        }
+        .event-agent-start { border-left-color: #28a745; }
+        .event-agent-finish { border-left-color: #28a745; font-weight: bold; }
+        .event-step-start { border-left-color: #17a2b8; }
+        .event-step-finish { border-left-color: #17a2b8; }
+        .event-tool-call-start { border-left-color: #ffc107; }
+        .event-tool-call-finish { border-left-color: #ffc107; }
+        .event-llm-chunk { border-left-color: #6c757d; background: #f8f9fa; }
+        .event-thinking { border-left-color: #6f42c1; }
+        .event-error { border-left-color: #dc3545; background: #f8d7da; }
+        .timestamp {
+            color: #999;
+            font-size: 12px;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 HelloAgents SSE 流式输出示例</h1>
+        
+        <div class="input-group">
+            <label for="agentType">Agent 类型：</label>
+            <select id="agentType">
+                <option value="react">ReActAgent（推理+工具调用）</option>
+                <option value="simple">SimpleAgent（简单对话）</option>
+                <option value="reflection">ReflectionAgent（反思优化）</option>
+                <option value="plan">PlanAgent（规划执行）</option>
+            </select>
+        </div>
+        
+        <div class="input-group">
+            <label for="userInput">用户输入：</label>
+            <input type="text" id="userInput" placeholder="请输入问题..." value="计算 123 + 456">
+        </div>
+        
+        <button id="startBtn" onclick="startStream()">开始流式输出</button>
+        <button id="stopBtn" onclick="stopStream()" disabled>停止</button>
+        <button onclick="clearOutput()">清空输出</button>
+        
+        <div id="status" class="status status-disconnected">未连接</div>
+        
+        <div id="output"></div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let currentText = '';
+
+        function startStream() {
+            const input = document.getElementById('userInput').value;
+            const agentType = document.getElementById('agentType').value;
+            
+            if (!input.trim()) {
+                alert('请输入问题');
+                return;
+            }
+
+            // 清空输出
+            currentText = '';
+            document.getElementById('output').innerHTML = '';
+            
+            // 禁用开始按钮
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            
+            // 创建 EventSource
+            const url = `http://localhost:8000/agent/stream`;
+            
+            // 使用 fetch + ReadableStream 代替 EventSource（支持 POST）
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    input: input,
+                    agent_type: agentType
+                })
+            }).then(response => {
+                updateStatus('已连接', true);
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            updateStatus('已断开', false);
+                            document.getElementById('startBtn').disabled = false;
+                            document.getElementById('stopBtn').disabled = true;
+                            return;
+                        }
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        processSSEChunk(chunk);
+                        readStream();
+                    });
+                }
+                
+                readStream();
+            }).catch(error => {
+                console.error('连接失败:', error);
+                updateStatus('连接失败: ' + error.message, false);
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+            });
+        }
+
+        function processSSEChunk(chunk) {
+            const lines = chunk.split('\n');
+            let eventType = null;
+            let eventData = null;
+            
+            for (const line of lines) {
+                if (line.startsWith('event:')) {
+                    eventType = line.substring(6).trim();
+                } else if (line.startsWith('data:')) {
+                    eventData = line.substring(5).trim();
+                    
+                    if (eventType && eventData) {
+                        try {
+                            const data = JSON.parse(eventData);
+                            handleEvent(eventType, data);
+                        } catch (e) {
+                            console.error('解析事件失败:', e, eventData);
+                        }
+                        eventType = null;
+                        eventData = null;
+                    }
+                }
+            }
+        }
+
+        function handleEvent(type, data) {
+            const output = document.getElementById('output');
+            
+            if (type === 'llm_chunk') {
+                // LLM 输出块 - 追加到当前文本
+                currentText += data.data.chunk;
+                appendEvent(type, `${data.data.chunk}`, data.timestamp);
+            } else if (type === 'agent_start') {
+                appendEvent(type, `🚀 Agent 开始: ${data.data.input_text}`, data.timestamp);
+            } else if (type === 'agent_finish') {
+                appendEvent(type, `✅ Agent 完成\n最终答案: ${data.data.result}`, data.timestamp);
+            } else if (type === 'step_start') {
+                appendEvent(type, `📍 步骤 ${data.data.step || ''} 开始: ${data.data.description || ''}`, data.timestamp);
+            } else if (type === 'step_finish') {
+                appendEvent(type, `✓ 步骤 ${data.data.step || ''} 完成`, data.timestamp);
+            } else if (type === 'tool_call_start') {
+                appendEvent(type, `🔧 调用工具: ${data.data.tool_name}`, data.timestamp);
+            } else if (type === 'tool_call_finish') {
+                appendEvent(type, `👀 工具结果: ${data.data.result}`, data.timestamp);
+            } else if (type === 'thinking') {
+                appendEvent(type, `💭 思考: ${data.data.chunk}`, data.timestamp);
+            } else if (type === 'error') {
+                appendEvent(type, `❌ 错误: ${data.data.error}`, data.timestamp);
+            }
+            
+            // 自动滚动到底部
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function appendEvent(type, content, timestamp) {
+            const output = document.getElementById('output');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event event-${type.replace(/_/g, '-')}`;
+            
+            const time = new Date(timestamp * 1000).toLocaleTimeString();
+            eventDiv.innerHTML = `<span class="timestamp">[${time}]</span> ${content}`;
+            
+            output.appendChild(eventDiv);
+        }
+
+        function stopStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            updateStatus('已断开', false);
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+            currentText = '';
+        }
+
+        function updateStatus(message, connected) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = connected ? 'status status-connected' : 'status status-disconnected';
+        }
+    </script>
+</body>
+</html>
+

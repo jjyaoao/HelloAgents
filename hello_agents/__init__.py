@@ -22,18 +22,13 @@ from .core.exceptions import HelloAgentsException
 
 # Agent实现
 from .agents.simple_agent import SimpleAgent
-from .agents.function_call_agent import FunctionCallAgent
 from .agents.react_agent import ReActAgent
 from .agents.reflection_agent import ReflectionAgent
-from .agents.plan_solve_agent import PlanAndSolveAgent
-from .agents.tool_aware_agent import ToolAwareSimpleAgent
+from .agents.plan_solve_agent import PlanSolveAgent
 
 # 工具系统
 from .tools.registry import ToolRegistry, global_registry
-from .tools.builtin.search_tool import SearchTool, search
 from .tools.builtin.calculator import CalculatorTool, calculate
-from .tools.chain import ToolChain, ToolChainManager
-from .tools.async_executor import AsyncToolExecutor
 
 __all__ = [
     # 版本信息
@@ -50,21 +45,14 @@ __all__ = [
 
     # Agent范式
     "SimpleAgent",
-    "FunctionCallAgent",
     "ReActAgent",
     "ReflectionAgent",
-    "PlanAndSolveAgent",
-    "ToolAwareSimpleAgent",
+    "PlanSolveAgent",
 
     # 工具系统
     "ToolRegistry",
     "global_registry",
-    "SearchTool",
-    "search",
     "CalculatorTool",
     "calculate",
-    "ToolChain",
-    "ToolChainManager",
-    "AsyncToolExecutor",
 ]
 
