@@ -1,19 +1,27 @@
-"""简单Agent实现 - 基于OpenAI原生API"""
+"""简单Agent实现 - 基于 Function Calling"""
 
-from typing import Optional, Iterator, TYPE_CHECKING
-import re
+from typing import Optional, Iterator, TYPE_CHECKING, List, Dict, Any, AsyncGenerator
+import json
 
 from ..core.agent import Agent
 from ..core.llm import HelloAgentsLLM
 from ..core.config import Config
 from ..core.message import Message
+from ..core.streaming import StreamEvent, StreamEventType
+from ..core.lifecycle import LifecycleHook
 
 if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
 
 class SimpleAgent(Agent):
-    """简单的对话Agent，支持可选的工具调用"""
-    
+    """简单的对话Agent，支持可选的工具调用
+
+    特性：
+    - 纯对话模式（无工具）
+    - Function Calling 工具调用（可选）
+    - 自动多轮工具调用
+    """
+
     def __init__(
         self,
         name: str,
@@ -21,11 +29,12 @@ class SimpleAgent(Agent):
         system_prompt: Optional[str] = None,
         config: Optional[Config] = None,
         tool_registry: Optional['ToolRegistry'] = None,
-        enable_tool_calling: bool = True
+        enable_tool_calling: bool = True,
+        max_tool_iterations: int = 3
     ):
         """
         初始化SimpleAgent
-        
+
         Args:
             name: Agent名称
             llm: LLM实例
@@ -33,294 +42,256 @@ class SimpleAgent(Agent):
             config: 配置对象
             tool_registry: 工具注册表（可选，如果提供则启用工具调用）
             enable_tool_calling: 是否启用工具调用（只有在提供tool_registry时生效）
+            max_tool_iterations: 最大工具调用迭代次数
         """
-        super().__init__(name, llm, system_prompt, config)
-        self.tool_registry = tool_registry
+        # 传递 tool_registry 到基类
+        super().__init__(
+            name,
+            llm,
+            system_prompt,
+            config,
+            tool_registry=tool_registry
+        )
         self.enable_tool_calling = enable_tool_calling and tool_registry is not None
-    
-    def _get_enhanced_system_prompt(self) -> str:
-        """构建增强的系统提示词，包含工具信息"""
-        base_prompt = self.system_prompt or "你是一个有用的AI助手。"
-        
-        if not self.enable_tool_calling or not self.tool_registry:
-            return base_prompt
-        
-        # 获取工具描述
-        tools_description = self.tool_registry.get_tools_description()
-        if not tools_description or tools_description == "暂无可用工具":
-            return base_prompt
-        
-        tools_section = "\n\n## 可用工具\n"
-        tools_section += "你可以使用以下工具来帮助回答问题：\n"
-        tools_section += tools_description + "\n"
+        self.max_tool_iterations = max_tool_iterations
 
-        tools_section += "\n## 工具调用格式\n"
-        tools_section += "当需要使用工具时，请使用以下格式：\n"
-        tools_section += "`[TOOL_CALL:{tool_name}:{parameters}]`\n\n"
-
-        tools_section += "### 参数格式说明\n"
-        tools_section += "1. **多个参数**：使用 `key=value` 格式，用逗号分隔\n"
-        tools_section += "   示例：`[TOOL_CALL:calculator_multiply:a=12,b=8]`\n"
-        tools_section += "   示例：`[TOOL_CALL:filesystem_read_file:path=README.md]`\n\n"
-        tools_section += "2. **单个参数**：直接使用 `key=value`\n"
-        tools_section += "   示例：`[TOOL_CALL:search:query=Python编程]`\n\n"
-        tools_section += "3. **简单查询**：可以直接传入文本\n"
-        tools_section += "   示例：`[TOOL_CALL:search:Python编程]`\n\n"
-
-        tools_section += "### 重要提示\n"
-        tools_section += "- 参数名必须与工具定义的参数名完全匹配\n"
-        tools_section += "- 数字参数直接写数字，不需要引号：`a=12` 而不是 `a=\"12\"`\n"
-        tools_section += "- 文件路径等字符串参数直接写：`path=README.md`\n"
-        tools_section += "- 工具调用结果会自动插入到对话中，然后你可以基于结果继续回答\n"
-
-        return base_prompt + tools_section
-    
-    def _parse_tool_calls(self, text: str) -> list:
-        """解析文本中的工具调用"""
-        pattern = r'\[TOOL_CALL:([^:]+):([^\]]+)\]'
-        matches = re.findall(pattern, text)
-        
-        tool_calls = []
-        for tool_name, parameters in matches:
-            tool_calls.append({
-                'tool_name': tool_name.strip(),
-                'parameters': parameters.strip(),
-                'original': f'[TOOL_CALL:{tool_name}:{parameters}]'
-            })
-        
-        return tool_calls
-    
-    def _execute_tool_call(self, tool_name: str, parameters: str) -> str:
-        """执行工具调用"""
-        if not self.tool_registry:
-            return f"❌ 错误：未配置工具注册表"
-
-        try:
-            # 获取Tool对象
-            tool = self.tool_registry.get_tool(tool_name)
-            if not tool:
-                return f"❌ 错误：未找到工具 '{tool_name}'"
-
-            # 智能参数解析
-            param_dict = self._parse_tool_parameters(tool_name, parameters)
-
-            # 调用工具
-            result = tool.run(param_dict)
-            return f"🔧 工具 {tool_name} 执行结果：\n{result}"
-
-        except Exception as e:
-            return f"❌ 工具调用失败：{str(e)}"
-
-    def _parse_tool_parameters(self, tool_name: str, parameters: str) -> dict:
-        """智能解析工具参数"""
-        import json
-        param_dict = {}
-
-        # 尝试解析JSON格式
-        if parameters.strip().startswith('{'):
-            try:
-                param_dict = json.loads(parameters)
-                # JSON解析成功，进行类型转换
-                param_dict = self._convert_parameter_types(tool_name, param_dict)
-                return param_dict
-            except json.JSONDecodeError:
-                # JSON解析失败，继续使用其他方式
-                pass
-
-        if '=' in parameters:
-            # 格式: key=value 或 action=search,query=Python
-            if ',' in parameters:
-                # 多个参数：action=search,query=Python,limit=3
-                pairs = parameters.split(',')
-                for pair in pairs:
-                    if '=' in pair:
-                        key, value = pair.split('=', 1)
-                        param_dict[key.strip()] = value.strip()
-            else:
-                # 单个参数：key=value
-                key, value = parameters.split('=', 1)
-                param_dict[key.strip()] = value.strip()
-
-            # 类型转换
-            param_dict = self._convert_parameter_types(tool_name, param_dict)
-
-            # 智能推断action（如果没有指定）
-            if 'action' not in param_dict:
-                param_dict = self._infer_action(tool_name, param_dict)
-        else:
-            # 直接传入参数，根据工具类型智能推断
-            param_dict = self._infer_simple_parameters(tool_name, parameters)
-
-        return param_dict
-
-    def _convert_parameter_types(self, tool_name: str, param_dict: dict) -> dict:
+    def run(self, input_text: str, **kwargs) -> str:
         """
-        根据工具的参数定义转换参数类型
+        运行 SimpleAgent（基于 Function Calling）
 
-        Args:
-            tool_name: 工具名称
-            param_dict: 参数字典
-
-        Returns:
-            类型转换后的参数字典
-        """
-        if not self.tool_registry:
-            return param_dict
-
-        tool = self.tool_registry.get_tool(tool_name)
-        if not tool:
-            return param_dict
-
-        # 获取工具的参数定义
-        try:
-            tool_params = tool.get_parameters()
-        except:
-            return param_dict
-
-        # 创建参数类型映射
-        param_types = {}
-        for param in tool_params:
-            param_types[param.name] = param.type
-
-        # 转换参数类型
-        converted_dict = {}
-        for key, value in param_dict.items():
-            if key in param_types:
-                param_type = param_types[key]
-                try:
-                    if param_type == 'number' or param_type == 'integer':
-                        # 转换为数字
-                        if isinstance(value, str):
-                            converted_dict[key] = float(value) if param_type == 'number' else int(value)
-                        else:
-                            converted_dict[key] = value
-                    elif param_type == 'boolean':
-                        # 转换为布尔值
-                        if isinstance(value, str):
-                            converted_dict[key] = value.lower() in ('true', '1', 'yes')
-                        else:
-                            converted_dict[key] = bool(value)
-                    else:
-                        converted_dict[key] = value
-                except (ValueError, TypeError):
-                    # 转换失败，保持原值
-                    converted_dict[key] = value
-            else:
-                converted_dict[key] = value
-
-        return converted_dict
-
-    def _infer_action(self, tool_name: str, param_dict: dict) -> dict:
-        """根据工具类型和参数推断action"""
-        if tool_name == 'memory':
-            if 'recall' in param_dict:
-                param_dict['action'] = 'search'
-                param_dict['query'] = param_dict.pop('recall')
-            elif 'store' in param_dict:
-                param_dict['action'] = 'add'
-                param_dict['content'] = param_dict.pop('store')
-            elif 'query' in param_dict:
-                param_dict['action'] = 'search'
-            elif 'content' in param_dict:
-                param_dict['action'] = 'add'
-        elif tool_name == 'rag':
-            if 'search' in param_dict:
-                param_dict['action'] = 'search'
-                param_dict['query'] = param_dict.pop('search')
-            elif 'query' in param_dict:
-                param_dict['action'] = 'search'
-            elif 'text' in param_dict:
-                param_dict['action'] = 'add_text'
-
-        return param_dict
-
-    def _infer_simple_parameters(self, tool_name: str, parameters: str) -> dict:
-        """为简单参数推断完整的参数字典"""
-        if tool_name == 'rag':
-            return {'action': 'search', 'query': parameters}
-        elif tool_name == 'memory':
-            return {'action': 'search', 'query': parameters}
-        else:
-            return {'input': parameters}
-
-    def run(self, input_text: str, max_tool_iterations: int = 3, **kwargs) -> str:
-        """
-        运行SimpleAgent，支持可选的工具调用
-        
         Args:
             input_text: 用户输入
-            max_tool_iterations: 最大工具调用迭代次数（仅在启用工具时有效）
             **kwargs: 其他参数
-            
+
         Returns:
-            Agent响应
+            最终回复
         """
+        from datetime import datetime
+        from hello_agents.observability import TraceLogger
+
+        session_start_time = datetime.now()
+
+        # 为每次 run 创建新的 TraceLogger（避免多轮对话时文件已关闭的问题）
+        trace_logger = None
+        if self.config.trace_enabled:
+            trace_logger = TraceLogger(
+                output_dir=self.config.trace_dir,
+                sanitize=self.config.trace_sanitize,
+                html_include_raw_response=self.config.trace_html_include_raw_response
+            )
+            trace_logger.log_event(
+                "session_start",
+                {
+                    "agent_name": self.name,
+                    "agent_type": self.__class__.__name__,
+                }
+            )
+
         # 构建消息列表
-        messages = []
-        
-        # 添加系统消息（可能包含工具信息）
-        enhanced_system_prompt = self._get_enhanced_system_prompt()
-        messages.append({"role": "system", "content": enhanced_system_prompt})
-        
-        # 添加历史消息
-        for msg in self._history:
-            messages.append({"role": msg.role, "content": msg.content})
-        
-        # 添加当前用户消息
-        messages.append({"role": "user", "content": input_text})
-        
-        # 如果没有启用工具调用，使用原有逻辑
-        if not self.enable_tool_calling:
-            response = self.llm.invoke(messages, **kwargs)
+        messages = self._build_messages(input_text)
+
+        # 记录用户消息
+        if trace_logger:
+            trace_logger.log_event(
+                "message_written",
+                {"role": "user", "content": input_text}
+            )
+
+        # 如果没有启用工具调用，直接返回 LLM 响应
+        if not self.enable_tool_calling or not self.tool_registry:
+            llm_response = self.llm.invoke(messages, **kwargs)
+            response_text = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
+
+            # 保存到历史记录
             self.add_message(Message(input_text, "user"))
-            self.add_message(Message(response, "assistant"))
-            return response
-        
-        # 迭代处理，支持多轮工具调用
+            self.add_message(Message(response_text, "assistant"))
+
+            if trace_logger:
+                duration = (datetime.now() - session_start_time).total_seconds()
+                trace_logger.log_event(
+                    "session_end",
+                    {
+                        "duration": duration,
+                        "final_answer": response_text,
+                        "status": "success",
+                        "usage": llm_response.usage if hasattr(llm_response, 'usage') else {},
+                        "latency_ms": llm_response.latency_ms if hasattr(llm_response, 'latency_ms') else 0
+                    }
+                )
+                trace_logger.finalize()
+
+            return response_text
+
+        # 启用工具调用模式
+        tool_schemas = self._build_tool_schemas()
+
         current_iteration = 0
         final_response = ""
 
-        while current_iteration < max_tool_iterations:
-            # 调用LLM
-            response = self.llm.invoke(messages, **kwargs)
+        while current_iteration < self.max_tool_iterations:
+            current_iteration += 1
 
-            # 检查是否有工具调用
-            tool_calls = self._parse_tool_calls(response)
+            # 调用 LLM（Function Calling）
+            try:
+                response = self.llm.invoke_with_tools(
+                    messages=messages,
+                    tools=tool_schemas,
+                    tool_choice="auto",
+                    **kwargs
+                )
+            except Exception as e:
+                print(f"❌ LLM 调用失败: {e}")
+                if trace_logger:
+                    trace_logger.log_event(
+                        "error",
+                        {"error_type": "LLM_ERROR", "message": str(e)},
+                        step=current_iteration
+                    )
+                break
 
-            if tool_calls:
-                # 执行所有工具调用并收集结果
-                tool_results = []
-                clean_response = response
+            # 获取响应消息
+            response_message = response.choices[0].message
 
-                for call in tool_calls:
-                    result = self._execute_tool_call(call['tool_name'], call['parameters'])
-                    tool_results.append(result)
-                    # 从响应中移除工具调用标记
-                    clean_response = clean_response.replace(call['original'], "")
+            # 记录模型输出
+            if trace_logger:
+                usage = response.usage
+                trace_logger.log_event(
+                    "model_output",
+                    {
+                        "content": response_message.content,
+                        "tool_calls": len(response_message.tool_calls) if response_message.tool_calls else 0,
+                        "usage": {
+                            "prompt_tokens": usage.prompt_tokens if usage else 0,
+                            "completion_tokens": usage.completion_tokens if usage else 0,
+                            "total_tokens": usage.total_tokens if usage else 0
+                        }
+                    },
+                    step=current_iteration
+                )
 
-                # 构建包含工具结果的消息
-                messages.append({"role": "assistant", "content": clean_response})
+            # 处理工具调用
+            tool_calls = response_message.tool_calls
+            if not tool_calls:
+                # 没有工具调用，直接返回文本响应
+                final_response = response_message.content or "抱歉，我无法回答这个问题。"
+                break
 
-                # 添加工具结果
-                tool_results_text = "\n\n".join(tool_results)
-                messages.append({"role": "user", "content": f"工具执行结果：\n{tool_results_text}\n\n请基于这些结果给出完整的回答。"})
+            # 将助手消息添加到历史
+            messages.append({
+                "role": "assistant",
+                "content": response_message.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in tool_calls
+                ]
+            })
 
-                current_iteration += 1
-                continue
+            # 执行所有工具调用
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                tool_call_id = tool_call.id
 
-            # 没有工具调用，这是最终回答
-            final_response = response
-            break
+                try:
+                    arguments = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError as e:
+                    print(f"❌ 工具参数解析失败: {e}")
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": f"错误：参数格式不正确 - {str(e)}"
+                    })
+                    continue
+
+                # 记录工具调用
+                if trace_logger:
+                    trace_logger.log_event(
+                        "tool_call",
+                        {
+                            "tool_name": tool_name,
+                            "tool_call_id": tool_call_id,
+                            "args": arguments
+                        },
+                        step=current_iteration
+                    )
+
+                # 执行工具（复用基类方法）
+                result = self._execute_tool_call(tool_name, arguments)
+
+                # 记录工具结果
+                if trace_logger:
+                    trace_logger.log_event(
+                        "tool_result",
+                        {
+                            "tool_name": tool_name,
+                            "tool_call_id": tool_call_id,
+                            "result": result
+                        },
+                        step=current_iteration
+                    )
+
+                # 添加工具结果到消息
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": result
+                })
 
         # 如果超过最大迭代次数，获取最后一次回答
-        if current_iteration >= max_tool_iterations and not final_response:
-            final_response = self.llm.invoke(messages, **kwargs)
-        
+        if current_iteration >= self.max_tool_iterations and not final_response:
+            llm_response = self.llm.invoke(messages, **kwargs)
+            final_response = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
+
         # 保存到历史记录
         self.add_message(Message(input_text, "user"))
         self.add_message(Message(final_response, "assistant"))
 
+        if trace_logger:
+            duration = (datetime.now() - session_start_time).total_seconds()
+            trace_logger.log_event(
+                "session_end",
+                {
+                    "duration": duration,
+                    "total_steps": current_iteration,
+                    "final_answer": final_response,
+                    "status": "success"
+                }
+            )
+            trace_logger.finalize()
+
         return final_response
+
+    def _build_messages(self, input_text: str) -> List[Dict[str, str]]:
+        """构建消息列表"""
+        messages = []
+
+        # 添加系统提示词
+        if self.system_prompt:
+            messages.append({
+                "role": "system",
+                "content": self.system_prompt
+            })
+
+        # 添加历史消息
+        for msg in self._history:
+            messages.append({
+                "role": msg.role,
+                "content": msg.content
+            })
+
+        # 添加用户问题
+        messages.append({
+            "role": "user",
+            "content": input_text
+        })
+
+        return messages
 
     def add_tool(self, tool, auto_expand: bool = True) -> None:
         """
@@ -388,3 +359,78 @@ class SimpleAgent(Agent):
         # 保存完整对话到历史记录
         self.add_message(Message(input_text, "user"))
         self.add_message(Message(full_response, "assistant"))
+
+    async def arun_stream(
+        self,
+        input_text: str,
+        on_start: LifecycleHook = None,
+        on_finish: LifecycleHook = None,
+        on_error: LifecycleHook = None,
+        **kwargs
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """
+        SimpleAgent 真正的流式执行
+
+        实时返回 LLM 输出的每个文本块
+
+        Args:
+            input_text: 用户输入
+            on_start: 开始钩子
+            on_finish: 完成钩子
+            on_error: 错误钩子
+            **kwargs: 其他参数
+
+        Yields:
+            StreamEvent: 流式事件
+        """
+        # 发送开始事件
+        yield StreamEvent.create(
+            StreamEventType.AGENT_START,
+            self.name,
+            input_text=input_text
+        )
+
+        try:
+            # 构建消息列表
+            messages = []
+
+            if self.system_prompt:
+                messages.append({"role": "system", "content": self.system_prompt})
+
+            for msg in self._history:
+                messages.append({"role": msg.role, "content": msg.content})
+
+            messages.append({"role": "user", "content": input_text})
+
+            # LLM 流式调用
+            full_response = ""
+            async for chunk in self.llm.astream_invoke(messages, **kwargs):
+                full_response += chunk
+
+                # 发送 LLM 输出块
+                yield StreamEvent.create(
+                    StreamEventType.LLM_CHUNK,
+                    self.name,
+                    chunk=chunk
+                )
+
+            # 发送完成事件
+            yield StreamEvent.create(
+                StreamEventType.AGENT_FINISH,
+                self.name,
+                result=full_response
+            )
+
+            # 保存到历史
+            self.add_message(Message(input_text, "user"))
+            self.add_message(Message(full_response, "assistant"))
+
+        except Exception as e:
+            # 发送错误事件
+            yield StreamEvent.create(
+                StreamEventType.ERROR,
+                self.name,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise

@@ -5,11 +5,14 @@ from .llm import HelloAgentsLLM
 from .message import Message
 from .config import Config
 from .exceptions import HelloAgentsException
+from .llm_response import LLMResponse, StreamStats
 
 __all__ = [
     "Agent",
-    "HelloAgentsLLM", 
+    "HelloAgentsLLM",
     "Message",
     "Config",
-    "HelloAgentsException"
+    "HelloAgentsException",
+    "LLMResponse",
+    "StreamStats"
 ]
