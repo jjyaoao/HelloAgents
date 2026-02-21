@@ -195,3 +195,13 @@ hello-agents/
 **HelloAgents** - 让智能体开发变得简单而强大 🚀
 </div>
 
+
+---
+
+## Optional: verifiable receipts (proof-of-delivery)
+
+If you want a shareable **proof link** for agent outputs (preview + download), you can mint a receipt via claw2claw.
+
+- Wrapper: https://github.com/jacobtop-tcg/claw2claw-receipt-wrapper
+- Demo: `examples/claw2claw_receipts_demo.py`
+
