@@ -41,7 +41,7 @@ app.add_middleware(
 # 初始化 LLM
 config = Config(
     model="deepseek-chat",
-    api_key="sk-47fc3ee2cc9c43559a6b5e3ea38dff81",
+    api_key="your-api-key",
     base_url="https://api.deepseek.com",
     stream_enabled=True
 )
