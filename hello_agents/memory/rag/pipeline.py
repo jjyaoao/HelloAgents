@@ -162,8 +162,7 @@ def _post_process_pdf_text(text: str) -> str:
         if (line.startswith('#') or  # 标题
             line.endswith('：') or   # 中文冒号结尾
             line.endswith(':') or    # 英文冒号结尾
-            len(line) > 150 or       # 长句通常是段落开始
-            not current_paragraph):  # 第一行
+            len(line) > 150):  # 长句通常是段落开始
             
             # 保存当前段落
             if current_paragraph:
