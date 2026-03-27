@@ -2,10 +2,11 @@
 
 import time
 import asyncio
+import json
 from abc import ABC, abstractmethod
 from typing import Optional, Iterator, List, Dict, Any, Union, AsyncIterator
 
-from .llm_response import LLMResponse, StreamStats
+from .llm_response import LLMResponse, StreamStats, LLMToolResponse, ToolCall
 from .exceptions import HelloAgentsException
 
 
@@ -69,7 +70,7 @@ class BaseLLMAdapter(ABC):
             yield chunk
 
     @abstractmethod
-    def invoke_with_tools(self, messages: List[Dict], tools: List[Dict], **kwargs) -> Any:
+    def invoke_with_tools(self, messages: List[Dict], tools: List[Dict], **kwargs) -> LLMToolResponse:
         """工具调用（Function Calling）"""
         pass
 
@@ -272,11 +273,12 @@ class OpenAIAdapter(BaseLLMAdapter):
             raise HelloAgentsException(f"OpenAI API异步流式调用失败: {str(e)}")
 
     def invoke_with_tools(self, messages: List[Dict], tools: List[Dict],
-                         tool_choice: Union[str, Dict] = "auto", **kwargs) -> Any:
+                         tool_choice: Union[str, Dict] = "auto", **kwargs) -> LLMToolResponse:
         """工具调用（Function Calling）"""
         if not self._client:
             self._client = self.create_client()
 
+        start_time = time.time()
         try:
             response = self._client.chat.completions.create(
                 model=self.model,
@@ -285,7 +287,34 @@ class OpenAIAdapter(BaseLLMAdapter):
                 tool_choice=tool_choice,
                 **kwargs
             )
-            return response
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            message = response.choices[0].message
+
+            tool_calls = []
+            if message.tool_calls:
+                for tc in message.tool_calls:
+                    tool_calls.append(ToolCall(
+                        id=tc.id,
+                        name=tc.function.name,
+                        arguments=tc.function.arguments
+                    ))
+
+            usage = {}
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+
+            return LLMToolResponse(
+                content=message.content,
+                tool_calls=tool_calls,
+                model=response.model,
+                usage=usage,
+                latency_ms=latency_ms
+            )
 
         except Exception as e:
             raise HelloAgentsException(f"OpenAI Function Calling调用失败: {str(e)}")
@@ -421,13 +450,14 @@ class AnthropicAdapter(BaseLLMAdapter):
         except Exception as e:
             raise HelloAgentsException(f"Anthropic API流式调用失败: {str(e)}")
 
-    def invoke_with_tools(self, messages: List[Dict], tools: List[Dict], **kwargs) -> Any:
+    def invoke_with_tools(self, messages: List[Dict], tools: List[Dict], **kwargs) -> LLMToolResponse:
         """工具调用（Anthropic格式）"""
         if not self._client:
             self._client = self.create_client()
 
         system_content, converted_messages = self._convert_messages(messages)
 
+        start_time = time.time()
         try:
             request_params = {
                 "model": self.model,
@@ -440,7 +470,33 @@ class AnthropicAdapter(BaseLLMAdapter):
                 request_params["system"] = system_content
 
             response = self._client.messages.create(**request_params)
-            return response
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            content = ""
+            tool_calls = []
+            for block in response.content:
+                if block.type == "text":
+                    content += block.text
+                elif block.type == "tool_use":
+                    tool_calls.append(ToolCall(
+                        id=block.id,
+                        name=block.name,
+                        arguments=json.dumps(block.input)
+                    ))
+
+            usage = {
+                "prompt_tokens": response.usage.input_tokens,
+                "completion_tokens": response.usage.output_tokens,
+                "total_tokens": response.usage.input_tokens + response.usage.output_tokens
+            }
+
+            return LLMToolResponse(
+                content=content if content else None,
+                tool_calls=tool_calls,
+                model=self.model,
+                usage=usage,
+                latency_ms=latency_ms
+            )
 
         except Exception as e:
             raise HelloAgentsException(f"Anthropic工具调用失败: {str(e)}")
@@ -587,13 +643,14 @@ class GeminiAdapter(BaseLLMAdapter):
         except Exception as e:
             raise HelloAgentsException(f"Gemini API流式调用失败: {str(e)}")
 
-    def invoke_with_tools(self, messages: List[Dict], tools: List[Dict], **kwargs) -> Any:
+    def invoke_with_tools(self, messages: List[Dict], tools: List[Dict], **kwargs) -> LLMToolResponse:
         """工具调用（Gemini格式）"""
         if not self._client:
             self._client = self.create_client()
 
         system_instruction, converted_messages = self._convert_messages(messages)
 
+        start_time = time.time()
         try:
             # 转换工具格式为Gemini格式
             gemini_tools = []
@@ -613,7 +670,35 @@ class GeminiAdapter(BaseLLMAdapter):
             model = self._client.GenerativeModel(**model_params, tools=gemini_tools)
 
             response = model.generate_content(converted_messages)
-            return response
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            content = response.text if hasattr(response, 'text') else ""
+            tool_calls = []
+
+            # 解析 Gemini 工具调用
+            for part in response.candidates[0].content.parts:
+                if part.function_call:
+                    tool_calls.append(ToolCall(
+                        id=f"call_{int(time.time()*1000)}", # Gemini 没有显式的 call_id，生成一个
+                        name=part.function_call.name,
+                        arguments=json.dumps(dict(part.function_call.args))
+                    ))
+
+            usage = {}
+            if hasattr(response, 'usage_metadata'):
+                usage = {
+                    "prompt_tokens": response.usage_metadata.prompt_token_count,
+                    "completion_tokens": response.usage_metadata.candidates_token_count,
+                    "total_tokens": response.usage_metadata.total_token_count
+                }
+
+            return LLMToolResponse(
+                content=content if content else None,
+                tool_calls=tool_calls,
+                model=self.model,
+                usage=usage,
+                latency_ms=latency_ms
+            )
 
         except Exception as e:
             raise HelloAgentsException(f"Gemini工具调用失败: {str(e)}")

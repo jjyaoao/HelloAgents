@@ -1,7 +1,25 @@
 """LLM响应对象定义"""
 
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from dataclasses import dataclass, field
+
+
+@dataclass
+class ToolCall:
+    """统一的工具调用对象"""
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass
+class LLMToolResponse:
+    """统一的工具调用响应对象"""
+    content: Optional[str]
+    tool_calls: List[ToolCall]
+    model: str
+    usage: Dict[str, int] = field(default_factory=dict)
+    latency_ms: int = 0
 
 
 @dataclass

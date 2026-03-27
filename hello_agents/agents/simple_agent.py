@@ -150,7 +150,7 @@ class SimpleAgent(Agent):
                 break
 
             # 获取响应消息
-            response_message = response.choices[0].message
+            # response 现在是 LLMToolResponse 对象
 
             # 记录模型输出
             if trace_logger:
@@ -158,35 +158,35 @@ class SimpleAgent(Agent):
                 trace_logger.log_event(
                     "model_output",
                     {
-                        "content": response_message.content,
-                        "tool_calls": len(response_message.tool_calls) if response_message.tool_calls else 0,
+                        "content": response.content,
+                        "tool_calls": len(response.tool_calls) if response.tool_calls else 0,
                         "usage": {
-                            "prompt_tokens": usage.prompt_tokens if usage else 0,
-                            "completion_tokens": usage.completion_tokens if usage else 0,
-                            "total_tokens": usage.total_tokens if usage else 0
+                            "prompt_tokens": usage.get("prompt_tokens", 0) if usage else 0,
+                            "completion_tokens": usage.get("completion_tokens", 0) if usage else 0,
+                            "total_tokens": usage.get("total_tokens", 0) if usage else 0
                         }
                     },
                     step=current_iteration
                 )
 
             # 处理工具调用
-            tool_calls = response_message.tool_calls
+            tool_calls = response.tool_calls
             if not tool_calls:
                 # 没有工具调用，直接返回文本响应
-                final_response = response_message.content or "抱歉，我无法回答这个问题。"
+                final_response = response.content or "抱歉，我无法回答这个问题。"
                 break
 
             # 将助手消息添加到历史
             messages.append({
                 "role": "assistant",
-                "content": response_message.content,
+                "content": response.content,
                 "tool_calls": [
                     {
                         "id": tc.id,
                         "type": "function",
                         "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
+                            "name": tc.name,
+                            "arguments": tc.arguments
                         }
                     }
                     for tc in tool_calls
@@ -195,11 +195,11 @@ class SimpleAgent(Agent):
 
             # 执行所有工具调用
             for tool_call in tool_calls:
-                tool_name = tool_call.function.name
+                tool_name = tool_call.name
                 tool_call_id = tool_call.id
 
                 try:
-                    arguments = json.loads(tool_call.function.arguments)
+                    arguments = json.loads(tool_call.arguments)
                 except json.JSONDecodeError as e:
                     print(f"❌ 工具参数解析失败: {e}")
                     messages.append({

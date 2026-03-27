@@ -67,12 +67,10 @@ class Planner:
                 **kwargs
             )
 
-            response_message = response.choices[0].message
-
             # 提取工具调用结果
-            if response_message.tool_calls:
-                tool_call = response_message.tool_calls[0]
-                arguments = json.loads(tool_call.function.arguments)
+            if response.tool_calls:
+                tool_call = response.tool_calls[0]
+                arguments = json.loads(tool_call.arguments)
                 plan = arguments.get("steps", [])
 
                 print(f"✅ 计划已生成:")
@@ -205,25 +203,23 @@ class Executor:
                 print(f"❌ LLM 调用失败: {e}")
                 break
 
-            response_message = response.choices[0].message
-
             # 处理工具调用
-            tool_calls = response_message.tool_calls
+            tool_calls = response.tool_calls
             if not tool_calls:
                 # 没有工具调用，返回文本响应
-                return response_message.content or ""
+                return response.content or ""
 
             # 将助手消息添加到历史
             messages.append({
                 "role": "assistant",
-                "content": response_message.content,
+                "content": response.content,
                 "tool_calls": [
                     {
                         "id": tc.id,
                         "type": "function",
                         "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
+                            "name": tc.name,
+                            "arguments": tc.arguments
                         }
                     }
                     for tc in tool_calls
@@ -232,11 +228,11 @@ class Executor:
 
             # 执行所有工具调用
             for tool_call in tool_calls:
-                tool_name = tool_call.function.name
+                tool_name = tool_call.name
                 tool_call_id = tool_call.id
 
                 try:
-                    arguments = json.loads(tool_call.function.arguments)
+                    arguments = json.loads(tool_call.arguments)
                 except json.JSONDecodeError as e:
                     print(f"❌ 工具参数解析失败: {e}")
                     messages.append({

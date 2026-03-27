@@ -189,11 +189,11 @@ class ReActAgent(Agent):
                 break
 
             # 获取响应消息
-            response_message = response.choices[0].message
+            # response 现在是 LLMToolResponse 对象
 
             # 累计 tokens
             if response.usage:
-                total_tokens += response.usage.total_tokens
+                total_tokens += response.usage.get("total_tokens", 0)
                 self._total_tokens = total_tokens
 
             # 记录模型输出
@@ -201,10 +201,10 @@ class ReActAgent(Agent):
                 self.trace_logger.log_event(
                     "model_output",
                     {
-                        "content": response_message.content or "",
-                        "tool_calls": len(response_message.tool_calls) if response_message.tool_calls else 0,
+                        "content": response.content or "",
+                        "tool_calls": len(response.tool_calls) if response.tool_calls else 0,
                         "usage": {
-                            "total_tokens": response.usage.total_tokens if response.usage else 0,
+                            "total_tokens": response.usage.get("total_tokens", 0) if response.usage else 0,
                             "cost": 0.0
                         }
                     },
@@ -212,10 +212,10 @@ class ReActAgent(Agent):
                 )
 
             # 处理工具调用
-            tool_calls = response_message.tool_calls
+            tool_calls = response.tool_calls
             if not tool_calls:
                 # 没有工具调用，直接返回文本响应
-                final_answer = response_message.content or "抱歉，我无法回答这个问题。"
+                final_answer = response.content or "抱歉，我无法回答这个问题。"
                 print(f"💬 直接回复: {final_answer}")
 
                 # 保存到历史记录
@@ -240,14 +240,14 @@ class ReActAgent(Agent):
             # 将助手消息添加到历史
             messages.append({
                 "role": "assistant",
-                "content": response_message.content,
+                "content": response.content,
                 "tool_calls": [
                     {
                         "id": tc.id,
                         "type": "function",
                         "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
+                            "name": tc.name,
+                            "arguments": tc.arguments
                         }
                     }
                     for tc in tool_calls
@@ -256,11 +256,11 @@ class ReActAgent(Agent):
 
             # 执行所有工具调用
             for tool_call in tool_calls:
-                tool_name = tool_call.function.name
+                tool_name = tool_call.name
                 tool_call_id = tool_call.id
 
                 try:
-                    arguments = json.loads(tool_call.function.arguments)
+                    arguments = json.loads(tool_call.arguments)
                 except json.JSONDecodeError as e:
                     print(f"❌ 工具参数解析失败: {e}")
                     messages.append({
@@ -565,22 +565,20 @@ class ReActAgent(Agent):
                     )
                     break
 
-                # 获取响应消息
-                response_message = response.choices[0].message
-
                 # 累计 tokens
                 if response.usage:
-                    total_tokens += response.usage.total_tokens
+                    total_tokens += response.usage.get("total_tokens", 0)
 
+                # 记录模型输出
                 # 记录模型输出
                 if self.trace_logger:
                     self.trace_logger.log_event(
                         "model_output",
                         {
-                            "content": response_message.content or "",
-                            "tool_calls": len(response_message.tool_calls) if response_message.tool_calls else 0,
+                            "content": response.content or "",
+                            "tool_calls": len(response.tool_calls) if response.tool_calls else 0,
                             "usage": {
-                                "total_tokens": response.usage.total_tokens if response.usage else 0,
+                                "total_tokens": response.usage.get("total_tokens", 0) if response.usage else 0,
                                 "cost": 0.0
                             }
                         },
@@ -588,10 +586,10 @@ class ReActAgent(Agent):
                     )
 
                 # 处理工具调用
-                tool_calls = response_message.tool_calls
+                tool_calls = response.tool_calls
                 if not tool_calls:
                     # 没有工具调用，直接返回
-                    final_answer = response_message.content or "抱歉，我无法回答这个问题。"
+                    final_answer = response.content or "抱歉，我无法回答这个问题。"
                     print(f"💬 直接回复: {final_answer}")
 
                     self.add_message(Message(input_text, "user"))
@@ -623,14 +621,14 @@ class ReActAgent(Agent):
                 # 将助手消息添加到历史
                 messages.append({
                     "role": "assistant",
-                    "content": response_message.content,
+                    "content": response.content,
                     "tool_calls": [
                         {
                             "id": tc.id,
                             "type": "function",
                             "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments
+                                "name": tc.name,
+                                "arguments": tc.arguments
                             }
                         }
                         for tc in tool_calls
@@ -759,18 +757,18 @@ class ReActAgent(Agent):
         user_calls = []
 
         for tc in tool_calls:
-            if tc.function.name in self._builtin_tools:
+            if tc.name in self._builtin_tools:
                 builtin_calls.append(tc)
             else:
                 user_calls.append(tc)
 
         # 1. 串行执行内置工具
         for tc in builtin_calls:
-            tool_name = tc.function.name
+            tool_name = tc.name
             tool_call_id = tc.id
 
             try:
-                arguments = json.loads(tc.function.arguments)
+                arguments = json.loads(tc.arguments)
             except json.JSONDecodeError as e:
                 results.append((tool_name, tool_call_id, {"content": f"错误：参数格式不正确 - {str(e)}"}))
                 continue
@@ -812,11 +810,11 @@ class ReActAgent(Agent):
 
             async def execute_one(tc):
                 async with semaphore:
-                    tool_name = tc.function.name
+                    tool_name = tc.name
                     tool_call_id = tc.id
 
                     try:
-                        arguments = json.loads(tc.function.arguments)
+                        arguments = json.loads(tc.arguments)
                     except json.JSONDecodeError as e:
                         return (tool_name, tool_call_id, {"content": f"错误：参数格式不正确 - {str(e)}"})
 
@@ -987,12 +985,11 @@ class ReActAgent(Agent):
                         **kwargs
                     )
 
-                    response_message = response.choices[0].message
-                    tool_calls = response_message.tool_calls
+                    tool_calls = response.tool_calls
 
                     if not tool_calls:
                         # 没有工具调用，直接返回
-                        final_answer = response_message.content or full_response or "抱歉，我无法回答这个问题。"
+                        final_answer = response.content or full_response or "抱歉，我无法回答这个问题。"
 
                         yield StreamEvent.create(
                             StreamEventType.AGENT_FINISH,
@@ -1012,14 +1009,14 @@ class ReActAgent(Agent):
                     # 添加助手消息到历史
                     messages.append({
                         "role": "assistant",
-                        "content": response_message.content,
+                        "content": response.content,
                         "tool_calls": [
                             {
                                 "id": tc.id,
                                 "type": "function",
                                 "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments
+                                    "name": tc.name,
+                                    "arguments": tc.arguments
                                 }
                             }
                             for tc in tool_calls
@@ -1053,7 +1050,7 @@ class ReActAgent(Agent):
                         # 检查是否是 Finish 工具
                         if tool_name == "Finish":
                             try:
-                                args = json.loads(tool_calls[0].function.arguments)
+                                args = json.loads(tool_calls[0].arguments)
                                 final_answer = args.get("answer", result_dict["content"])
                             except:
                                 final_answer = result_dict["content"]
