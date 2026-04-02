@@ -24,6 +24,10 @@ dependencies = [
     "pyyaml>=6.0.0",
 ]
 
+[project.optional-dependencies]
+gemini = ["google-genai>=1.0.0"]
+anthropic = ["anthropic>=0.20.0"]
+
 [project.urls]
 Homepage = "https://github.com/jjyaoao/HelloAgents"
 Documentation = "https://github.com/jjyaoao/HelloAgents/blob/main/README.md"
