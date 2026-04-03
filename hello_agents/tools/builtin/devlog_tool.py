@@ -11,6 +11,7 @@
 """
 
 import json
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +33,9 @@ CATEGORIES = {
     "test": "测试相关记录",
     "performance": "性能优化记录"
 }
+
+# session_id 允许的字符：字母、数字、连字符、下划线、点号
+_SAFE_SESSION_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
 
 
 @dataclass
@@ -209,6 +213,35 @@ class DevLogTool(Tool):
     - clear: 清空日志
     """
 
+    @staticmethod
+    def _validate_session_id(session_id: str) -> str:
+        """验证 session_id 不包含路径遍历字符。
+
+        只允许字母、数字、连字符、下划线和点号（不允许连续的点号 '..'）。
+        这可以防止通过 session_id 构造恶意文件名导致任意路径读写。
+
+        Args:
+            session_id: 待验证的会话 ID
+
+        Returns:
+            经过验证的 session_id（原值）
+
+        Raises:
+            ValueError: 如果 session_id 包含不安全字符
+        """
+        if not session_id or not _SAFE_SESSION_ID_RE.match(session_id):
+            raise ValueError(
+                f"Invalid session_id: {session_id!r}. "
+                "session_id may only contain alphanumeric characters, "
+                "hyphens, underscores and dots."
+            )
+        if '..' in session_id:
+            raise ValueError(
+                f"Invalid session_id: {session_id!r}. "
+                "session_id must not contain '..'."
+            )
+        return session_id
+
     def __init__(
         self,
         session_id: str,
@@ -223,6 +256,9 @@ class DevLogTool(Tool):
             agent_name: Agent 名称
             project_root: 项目根目录
             persistence_dir: 持久化目录（相对于 project_root）
+
+        Raises:
+            ValueError: 如果 session_id 包含不安全字符（路径遍历等）
         """
         super().__init__(
             name="DevLog",
@@ -246,7 +282,7 @@ class DevLogTool(Tool):
 }}""",
             expandable=False
         )
-        self.session_id = session_id
+        self.session_id = self._validate_session_id(session_id)
         self.agent_name = agent_name
         self.project_root = Path(project_root)
         self.persistence_dir = self.project_root / persistence_dir
@@ -447,4 +483,3 @@ class DevLogTool(Tool):
             except Exception:
                 # 加载失败，使用新的存储
                 pass
-
