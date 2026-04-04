@@ -9,6 +9,7 @@
 
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -45,7 +46,10 @@ class SessionStore:
     sessions = store.list_sessions()
     ```
     """
-    
+
+    # Allowed characters for session names: alphanumeric, hyphen, underscore, dot
+    _SAFE_NAME_RE = re.compile(r'^[A-Za-z0-9_\-\.]+$')
+
     def __init__(self, session_dir: str = "memory/sessions"):
         """初始化会话存储器
         
@@ -54,7 +58,46 @@ class SessionStore:
         """
         self.session_dir = Path(session_dir)
         self.session_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    def _validate_session_name(self, name: str) -> None:
+        """Validate that a session name cannot escape the session directory.
+
+        Args:
+            name: The session name to validate.
+
+        Raises:
+            ValueError: If the name contains path traversal sequences or
+                        unsafe characters.
+        """
+        if not name or not self._SAFE_NAME_RE.match(name):
+            raise ValueError(
+                f"Invalid session name: {name!r}. "
+                "Only alphanumeric characters, hyphens, underscores, and dots are allowed."
+            )
+        # Double-check: the resolved path must stay inside session_dir
+        candidate = (self.session_dir / f"{name}.json").resolve()
+        session_root = self.session_dir.resolve()
+        if not str(candidate).startswith(str(session_root) + os.sep) and candidate.parent != session_root:
+            raise ValueError(
+                f"Session name {name!r} resolves outside the session directory."
+            )
+
+    def _validate_filepath(self, filepath: str) -> None:
+        """Validate that a filepath is inside the session directory.
+
+        Args:
+            filepath: The file path to validate.
+
+        Raises:
+            ValueError: If the resolved path is outside the session directory.
+        """
+        resolved = Path(filepath).resolve()
+        session_root = self.session_dir.resolve()
+        if not str(resolved).startswith(str(session_root) + os.sep) and resolved.parent != session_root:
+            raise ValueError(
+                f"File path {filepath!r} is outside the session directory."
+            )
+
     def _generate_session_id(self) -> str:
         """生成唯一的会话 ID
         
@@ -88,12 +131,16 @@ class SessionStore:
         
         Returns:
             保存的文件路径
+
+        Raises:
+            ValueError: If session_name contains path traversal sequences.
         """
         # 生成会话 ID（只生成一次）
         session_id = self._generate_session_id()
 
         # 生成文件名
         if session_name:
+            self._validate_session_name(session_name)
             filename = f"{session_name}.json"
         else:
             filename = f"session-{session_id}.json"
@@ -137,7 +184,10 @@ class SessionStore:
         Raises:
             FileNotFoundError: 文件不存在
             json.JSONDecodeError: 文件格式错误
+            ValueError: If filepath is outside the session directory.
         """
+        self._validate_filepath(filepath)
+
         with open(filepath, 'r', encoding='utf-8') as f:
             session_data = json.load(f)
 
@@ -180,7 +230,12 @@ class SessionStore:
 
         Returns:
             是否删除成功
+
+        Raises:
+            ValueError: If session_name contains path traversal sequences.
         """
+        self._validate_session_name(session_name)
+
         filepath = self.session_dir / f"{session_name}.json"
         if filepath.exists():
             os.remove(filepath)
@@ -248,4 +303,3 @@ class SessionStore:
             "current_hash": current_hash,
             "recommendation": "建议重新读取文件" if changed else "可以安全恢复"
         }
-
