@@ -506,19 +506,20 @@ class GeminiAdapter(BaseLLMAdapter):
     """Google Gemini适配器
 
     处理Gemini特有的API格式
+    使用新版 google.genai 包（替代已废弃的 google.generativeai）
     """
 
     def create_client(self) -> Any:
         """创建Gemini客户端"""
         try:
-            import google.generativeai as genai
+            from google import genai
         except ImportError:
             raise HelloAgentsException(
-                "使用Gemini需要安装: pip install google-generativeai"
+                "使用Gemini需要安装: pip install google-genai"
             )
 
-        genai.configure(api_key=self.api_key)
-        return genai
+        client = genai.Client(api_key=self.api_key)
+        return client
 
     def _convert_messages(self, messages: List[Dict]) -> tuple[Optional[str], List[Dict]]:
         """转换消息格式"""
@@ -533,7 +534,7 @@ class GeminiAdapter(BaseLLMAdapter):
                 role = "model" if msg["role"] == "assistant" else "user"
                 converted_messages.append({
                     "role": role,
-                    "parts": [msg["content"]]
+                    "parts": [{"text": msg["content"]}]
                 })
 
         return system_instruction, converted_messages
@@ -543,28 +544,25 @@ class GeminiAdapter(BaseLLMAdapter):
         if not self._client:
             self._client = self.create_client()
 
+        from google.genai import types as genai_types
+
         start_time = time.time()
         system_instruction, converted_messages = self._convert_messages(messages)
 
         try:
             # 创建生成配置
-            generation_config = {}
+            config_params = {}
             if "temperature" in kwargs:
-                generation_config["temperature"] = kwargs.pop("temperature")
+                config_params["temperature"] = kwargs.pop("temperature")
             if "max_tokens" in kwargs:
-                generation_config["max_output_tokens"] = kwargs.pop("max_tokens")
-
-            # 创建模型
-            model_params = {"model_name": self.model}
+                config_params["max_output_tokens"] = kwargs.pop("max_tokens")
             if system_instruction:
-                model_params["system_instruction"] = system_instruction
+                config_params["system_instruction"] = system_instruction
 
-            model = self._client.GenerativeModel(**model_params)
-
-            # 生成内容
-            response = model.generate_content(
-                converted_messages,
-                generation_config=generation_config if generation_config else None
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=converted_messages,
+                config=genai_types.GenerateContentConfig(**config_params) if config_params else None
             )
 
             latency_ms = int((time.time() - start_time) * 1000)
@@ -574,11 +572,11 @@ class GeminiAdapter(BaseLLMAdapter):
 
             # 提取usage
             usage = {}
-            if hasattr(response, 'usage_metadata'):
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
                 usage = {
-                    "prompt_tokens": response.usage_metadata.prompt_token_count,
-                    "completion_tokens": response.usage_metadata.candidates_token_count,
-                    "total_tokens": response.usage_metadata.total_token_count,
+                    "prompt_tokens": response.usage_metadata.prompt_token_count or 0,
+                    "completion_tokens": response.usage_metadata.candidates_token_count or 0,
+                    "total_tokens": response.usage_metadata.total_token_count or 0,
                 }
 
             return LLMResponse(
@@ -596,40 +594,39 @@ class GeminiAdapter(BaseLLMAdapter):
         if not self._client:
             self._client = self.create_client()
 
+        from google.genai import types as genai_types
+
         start_time = time.time()
         system_instruction, converted_messages = self._convert_messages(messages)
 
         try:
-            generation_config = {}
+            # 创建生成配置
+            config_params = {}
             if "temperature" in kwargs:
-                generation_config["temperature"] = kwargs.pop("temperature")
+                config_params["temperature"] = kwargs.pop("temperature")
             if "max_tokens" in kwargs:
-                generation_config["max_output_tokens"] = kwargs.pop("max_tokens")
-
-            model_params = {"model_name": self.model}
+                config_params["max_output_tokens"] = kwargs.pop("max_tokens")
             if system_instruction:
-                model_params["system_instruction"] = system_instruction
-
-            model = self._client.GenerativeModel(**model_params)
+                config_params["system_instruction"] = system_instruction
 
             usage = {}
 
-            response = model.generate_content(
-                converted_messages,
-                generation_config=generation_config if generation_config else None,
-                stream=True
+            response = self._client.models.generate_content_stream(
+                model=self.model,
+                contents=converted_messages,
+                config=genai_types.GenerateContentConfig(**config_params) if config_params else None
             )
 
             for chunk in response:
-                if hasattr(chunk, 'text'):
+                if hasattr(chunk, 'text') and chunk.text:
                     yield chunk.text
 
                 # 尝试提取usage（可能在最后一个chunk）
-                if hasattr(chunk, 'usage_metadata'):
+                if hasattr(chunk, 'usage_metadata') and chunk.usage_metadata:
                     usage = {
-                        "prompt_tokens": chunk.usage_metadata.prompt_token_count,
-                        "completion_tokens": chunk.usage_metadata.candidates_token_count,
-                        "total_tokens": chunk.usage_metadata.total_token_count,
+                        "prompt_tokens": chunk.usage_metadata.prompt_token_count or 0,
+                        "completion_tokens": chunk.usage_metadata.candidates_token_count or 0,
+                        "total_tokens": chunk.usage_metadata.total_token_count or 0,
                     }
 
             latency_ms = int((time.time() - start_time) * 1000)
@@ -648,6 +645,8 @@ class GeminiAdapter(BaseLLMAdapter):
         if not self._client:
             self._client = self.create_client()
 
+        from google.genai import types as genai_types
+
         system_instruction, converted_messages = self._convert_messages(messages)
 
         start_time = time.time()
@@ -657,39 +656,46 @@ class GeminiAdapter(BaseLLMAdapter):
             for tool in tools:
                 if tool.get("type") == "function":
                     func = tool["function"]
-                    gemini_tools.append({
-                        "name": func["name"],
-                        "description": func.get("description", ""),
-                        "parameters": func.get("parameters", {})
-                    })
+                    gemini_tools.append(
+                        genai_types.FunctionDeclaration(
+                            name=func["name"],
+                            description=func.get("description", ""),
+                            parameters=func.get("parameters", {})
+                        )
+                    )
 
-            model_params = {"model_name": self.model}
+            config_params = {}
+            if gemini_tools:
+                config_params["tools"] = [genai_types.Tool(function_declarations=gemini_tools)]
             if system_instruction:
-                model_params["system_instruction"] = system_instruction
+                config_params["system_instruction"] = system_instruction
 
-            model = self._client.GenerativeModel(**model_params, tools=gemini_tools)
-
-            response = model.generate_content(converted_messages)
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=converted_messages,
+                config=genai_types.GenerateContentConfig(**config_params) if config_params else None
+            )
             latency_ms = int((time.time() - start_time) * 1000)
 
             content = response.text if hasattr(response, 'text') else ""
             tool_calls = []
 
             # 解析 Gemini 工具调用
-            for part in response.candidates[0].content.parts:
-                if part.function_call:
-                    tool_calls.append(ToolCall(
-                        id=f"call_{int(time.time()*1000)}", # Gemini 没有显式的 call_id，生成一个
-                        name=part.function_call.name,
-                        arguments=json.dumps(dict(part.function_call.args))
-                    ))
+            if response.candidates:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, 'function_call') and part.function_call:
+                        tool_calls.append(ToolCall(
+                            id=f"call_{int(time.time()*1000)}",  # Gemini 没有显式的 call_id，生成一个
+                            name=part.function_call.name,
+                            arguments=json.dumps(dict(part.function_call.args))
+                        ))
 
             usage = {}
-            if hasattr(response, 'usage_metadata'):
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
                 usage = {
-                    "prompt_tokens": response.usage_metadata.prompt_token_count,
-                    "completion_tokens": response.usage_metadata.candidates_token_count,
-                    "total_tokens": response.usage_metadata.total_token_count
+                    "prompt_tokens": response.usage_metadata.prompt_token_count or 0,
+                    "completion_tokens": response.usage_metadata.candidates_token_count or 0,
+                    "total_tokens": response.usage_metadata.total_token_count or 0
                 }
 
             return LLMToolResponse(
