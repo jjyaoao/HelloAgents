@@ -176,8 +176,8 @@ class Agent(ABC):
             执行结果
 
         Example:
-            >>> agent = SimpleAgent(...)
-            >>> result = await agent.arun("Hello", on_start=my_hook)
+            # >>> agent = SimpleAgent(...)
+            # >>> result = await agent.arun("Hello", on_start=my_hook)
         """
         # 触发开始事件
         await self._emit_event(
