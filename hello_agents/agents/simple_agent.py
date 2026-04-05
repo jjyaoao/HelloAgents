@@ -292,14 +292,16 @@ class SimpleAgent(Agent):
                 tool_results = []
                 clean_response = response
 
+                # 构建包含工具结果的消息
+                messages.append({"role": "assistant", "content": clean_response})
+
                 for call in tool_calls:
                     result = self._execute_tool_call(call['tool_name'], call['parameters'])
                     tool_results.append(result)
                     # 从响应中移除工具调用标记
                     clean_response = clean_response.replace(call['original'], "")
 
-                # 构建包含工具结果的消息
-                messages.append({"role": "assistant", "content": clean_response})
+
 
                 # 添加工具结果
                 tool_results_text = "\n\n".join(tool_results)
