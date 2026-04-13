@@ -161,14 +161,38 @@ class TodoWriteTool(Tool):
 - 最多 1 个任务可以标记为 in_progress
 - 每次提交完整列表（声明式）""",
                 required=False,
-                default=[]
+                default=[],
+                items={
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "任务内容"
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "任务状态",
+                            "enum": ["pending", "in_progress", "completed"]
+                        },
+                        "created_at": {
+                            "type": "string",
+                            "description": "创建时间（ISO 8601，可选）"
+                        },
+                        "updated_at": {
+                            "type": "string",
+                            "description": "更新时间（ISO 8601，可选）"
+                        }
+                    },
+                    "required": ["content", "status"]
+                }
             ),
             ToolParameter(
                 name="action",
                 type="string",
                 description="操作类型：create|update|clear（默认 create）",
                 required=False,
-                default="create"
+                default="create",
+                enum=["create", "update", "clear"]
             )
         ]
 
@@ -384,4 +408,3 @@ class TodoWriteTool(Tool):
             summary=data.get("summary", ""),
             todos=todos
         )
-

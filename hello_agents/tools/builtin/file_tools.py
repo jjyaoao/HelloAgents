@@ -629,7 +629,21 @@ class MultiEditTool(Tool):
                 name="edits",
                 type="array",
                 description="替换列表，每项包含 old_string 和 new_string",
-                required=True
+                required=True,
+                items={
+                    "type": "object",
+                    "properties": {
+                        "old_string": {
+                            "type": "string",
+                            "description": "要替换的原始文本，必须唯一匹配"
+                        },
+                        "new_string": {
+                            "type": "string",
+                            "description": "替换后的文本"
+                        }
+                    },
+                    "required": ["old_string", "new_string"]
+                }
             ),
             ToolParameter(
                 name="file_mtime_ms",
@@ -759,4 +773,3 @@ class MultiEditTool(Tool):
         if os.path.isabs(path):
             return Path(path)
         return self.working_dir / path
-

@@ -520,38 +520,20 @@ class Agent(ABC):
 
         # 1. 处理 Tool 对象
         for tool in self.tool_registry.get_all_tools():
-            properties: Dict[str, Any] = {}
-            required: List[str] = []
-
             try:
-                parameters = tool.get_parameters()
+                schemas.append(tool.to_openai_schema())
             except Exception:
-                parameters = []
-
-            for param in parameters:
-                properties[param.name] = {
-                    "type": self._map_parameter_type(param.type),
-                    "description": param.description or ""
-                }
-                if param.default is not None:
-                    properties[param.name]["default"] = param.default
-                if getattr(param, "required", True):
-                    required.append(param.name)
-
-            schema: Dict[str, Any] = {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties
+                schemas.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description or "",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
+                        }
                     }
-                }
-            }
-            if required:
-                schema["function"]["parameters"]["required"] = required
-            schemas.append(schema)
+                })
 
         # 2. 处理函数工具
         function_map = getattr(self.tool_registry, "_functions", {})
@@ -575,21 +557,6 @@ class Agent(ABC):
             })
 
         return schemas
-
-    @staticmethod
-    def _map_parameter_type(param_type: str) -> str:
-        """将工具参数类型映射为 JSON Schema 允许的类型
-
-        Args:
-            param_type: 工具参数类型
-
-        Returns:
-            JSON Schema 类型
-        """
-        normalized = (param_type or "").lower()
-        if normalized in {"string", "number", "integer", "boolean", "array", "object"}:
-            return normalized
-        return "string"
 
     def _convert_parameter_types(self, tool_name: str, param_dict: Dict[str, Any]) -> Dict[str, Any]:
         """根据工具定义转换参数类型
