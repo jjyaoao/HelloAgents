@@ -45,6 +45,39 @@ class ToolParameter(BaseModel):
     description: str
     required: bool = True
     default: Any = None
+    enum: Optional[List[Any]] = None
+    items: Optional[Dict[str, Any]] = None
+    properties: Optional[Dict[str, Any]] = None
+    additional_properties: Optional[Any] = None
+
+    def to_openai_schema(self) -> Dict[str, Any]:
+        """转换为单个参数的 OpenAI JSON Schema"""
+        param_type = (self.type or "").lower()
+        if param_type not in {"string", "number", "integer", "boolean", "array", "object"}:
+            param_type = "string"
+
+        description = self.description or ""
+        if self.default is not None:
+            description = f"{description} (默认: {self.default})".strip()
+
+        schema: Dict[str, Any] = {
+            "type": param_type,
+            "description": description
+        }
+
+        if self.enum:
+            schema["enum"] = self.enum
+
+        if param_type == "array":
+            schema["items"] = self.items or {"type": "string"}
+
+        if param_type == "object" and self.properties:
+            schema["properties"] = self.properties
+
+        if param_type == "object" and self.additional_properties is not None:
+            schema["additionalProperties"] = self.additional_properties
+
+        return schema
 
 
 class Tool(ABC):
@@ -251,21 +284,7 @@ class Tool(ABC):
         required = []
 
         for param in parameters:
-            # 基础属性定义
-            prop = {
-                "type": param.type,
-                "description": param.description
-            }
-
-            # 如果有默认值，添加到描述中（OpenAI schema 不支持 default 字段）
-            if param.default is not None:
-                prop["description"] = f"{param.description} (默认: {param.default})"
-
-            # 如果是数组类型，添加 items 定义
-            if param.type == "array":
-                prop["items"] = {"type": "string"}  # 默认字符串数组
-
-            properties[param.name] = prop
+            properties[param.name] = param.to_openai_schema()
 
             # 收集必需参数
             if param.required:
