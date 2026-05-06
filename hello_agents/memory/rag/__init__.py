@@ -42,7 +42,7 @@ __all__ = [
     "EmbeddingModel",
     "LocalTransformerEmbedding",
     "SentenceTransformerEmbedding",  # 兼容别名
-    "HuggingFaceEmbedding",          # 兼容别名
+    "HuggingFaceEmbedding",  # 兼容别名
     "TFIDFEmbedding",
     "create_embedding_model",
     "create_embedding_model_with_fallback",

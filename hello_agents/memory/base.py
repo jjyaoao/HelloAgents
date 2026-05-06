@@ -11,8 +11,10 @@ from typing import List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 
+
 class MemoryItem(BaseModel):
     """记忆项数据结构"""
+
     id: str
     content: str
     memory_type: str
@@ -24,12 +26,13 @@ class MemoryItem(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+
 class MemoryConfig(BaseModel):
     """记忆系统配置"""
-    
+
     # 存储路径
     storage_path: str = "./memory_data"
-    
+
     # 统计显示用的基础配置（仅用于展示）
     max_capacity: int = 100
     importance_threshold: float = 0.1
@@ -42,6 +45,7 @@ class MemoryConfig(BaseModel):
 
     # 感知记忆特定配置
     perceptual_memory_modalities: List[str] = ["text", "image", "audio", "video"]
+
 
 class BaseMemory(ABC):
     """记忆基类
@@ -81,8 +85,13 @@ class BaseMemory(ABC):
         pass
 
     @abstractmethod
-    def update(self, memory_id: str, content: str = None,
-               importance: float = None, metadata: Dict[str, Any] = None) -> bool:
+    def update(
+        self,
+        memory_id: str,
+        content: str = None,
+        importance: float = None,
+        metadata: Dict[str, Any] = None,
+    ) -> bool:
         """更新记忆
 
         Args:
@@ -137,9 +146,12 @@ class BaseMemory(ABC):
     def _generate_id(self) -> str:
         """生成记忆ID"""
         import uuid
+
         return str(uuid.uuid4())
 
-    def _calculate_importance(self, content: str, base_importance: float = 0.5) -> float:
+    def _calculate_importance(
+        self, content: str, base_importance: float = 0.5
+    ) -> float:
         """计算记忆重要性
 
         Args:

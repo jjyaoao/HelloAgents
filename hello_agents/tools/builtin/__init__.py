@@ -27,6 +27,7 @@ from .bfcl_evaluation_tool import BFCLEvaluationTool
 from .gaia_evaluation_tool import GAIAEvaluationTool
 from .llm_judge_tool import LLMJudgeTool
 from .win_rate_tool import WinRateTool
+from .task_dep_manager import TaskDepTool, TaskDepManager
 
 __all__ = [
     "SearchTool",
@@ -42,4 +43,6 @@ __all__ = [
     "GAIAEvaluationTool",
     "LLMJudgeTool",
     "WinRateTool",
+    "TaskDepTool",
+    "TaskDepManager",
 ]

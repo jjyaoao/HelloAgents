@@ -20,7 +20,7 @@
 - 禁止危险操作（rm, mv, chmod等）
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 import subprocess
 import os
 from pathlib import Path
@@ -32,15 +32,15 @@ from ..base import Tool, ToolParameter
 
 class TerminalTool(Tool):
     """命令行工具
-    
+
     提供安全的命令行执行能力，支持常用的文件系统和文本处理命令。
-    
+
     安全限制：
     - 只允许白名单中的命令
     - 限制在指定工作目录内
     - 超时控制（默认30秒）
     - 输出大小限制（默认10MB）
-    
+
     用法示例：
     ```python
     # 自动检测操作系统
@@ -67,21 +67,50 @@ class TerminalTool(Tool):
     # 允许的命令白名单（跨平台）
     ALLOWED_COMMANDS = {
         # 文件列表与信息
-        'ls', 'dir', 'tree',
+        "ls",
+        "dir",
+        "tree",
         # 文件内容查看
-        'cat', 'type', 'head', 'tail', 'less', 'more',
+        "cat",
+        "type",
+        "head",
+        "tail",
+        "less",
+        "more",
         # 文件搜索
-        'find', 'where', 'grep', 'egrep', 'fgrep', 'findstr',
+        "find",
+        "where",
+        "grep",
+        "egrep",
+        "fgrep",
+        "findstr",
         # 文本处理
-        'wc', 'sort', 'uniq', 'cut', 'awk', 'sed',
+        "wc",
+        "sort",
+        "uniq",
+        "cut",
+        "awk",
+        "sed",
         # 目录操作
-        'pwd', 'cd',
+        "pwd",
+        "cd",
         # 文件信息
-        'file', 'stat', 'du', 'df',
+        "file",
+        "stat",
+        "du",
+        "df",
         # 其他
-        'echo', 'which', 'whereis',
+        "echo",
+        "which",
+        "whereis",
         # 代码执行
-        'python', 'python3', 'node', 'bash', 'sh', 'powershell', 'cmd',
+        "python",
+        "python3",
+        "node",
+        "bash",
+        "sh",
+        "powershell",
+        "cmd",
     }
 
     def __init__(
@@ -90,11 +119,11 @@ class TerminalTool(Tool):
         timeout: int = 30,
         max_output_size: int = 10 * 1024 * 1024,  # 10MB
         allow_cd: bool = True,
-        os_type: str = "auto"  # "auto", "windows", "linux", "mac"
+        os_type: str = "auto",  # "auto", "windows", "linux", "mac"
     ):
         super().__init__(
             name="terminal",
-            description="跨平台命令行工具 - 执行安全的文件系统、文本处理和代码执行命令（支持Windows/Linux/Mac）"
+            description="跨平台命令行工具 - 执行安全的文件系统、文本处理和代码执行命令（支持Windows/Linux/Mac）",
         )
 
         self.workspace = Path(workspace).resolve()
@@ -123,39 +152,39 @@ class TerminalTool(Tool):
             return "mac"
         else:
             return "linux"
-    
+
     def run(self, parameters: Dict[str, Any]) -> str:
         """执行工具"""
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败"
-        
+
         command = parameters.get("command", "").strip()
-        
+
         if not command:
             return "❌ 命令不能为空"
-        
+
         # 解析命令
         try:
             parts = shlex.split(command)
         except ValueError as e:
             return f"❌ 命令解析失败: {e}"
-        
+
         if not parts:
             return "❌ 命令不能为空"
-        
+
         base_command = parts[0]
-        
+
         # 检查命令是否在白名单中
         if base_command not in self.ALLOWED_COMMANDS:
             return f"❌ 不允许的命令: {base_command}\n允许的命令: {', '.join(sorted(self.ALLOWED_COMMANDS))}"
-        
+
         # 特殊处理 cd 命令
-        if base_command == 'cd':
+        if base_command == "cd":
             return self._handle_cd(parts)
-        
+
         # 执行命令
         return self._execute_command(command)
-    
+
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义"""
         return [
@@ -166,21 +195,21 @@ class TerminalTool(Tool):
                     f"要执行的命令（白名单: {', '.join(sorted(list(self.ALLOWED_COMMANDS)[:10]))}...）\n"
                     "示例: 'ls -la', 'cat file.txt', 'grep pattern *.py', 'head -n 20 data.csv'"
                 ),
-                required=True
+                required=True,
             ),
         ]
-    
+
     def _handle_cd(self, parts: List[str]) -> str:
         """处理 cd 命令"""
         if not self.allow_cd:
             return "❌ cd 命令已禁用"
-        
+
         if len(parts) < 2:
             # cd 无参数，返回当前目录
             return f"当前目录: {self.current_dir}"
-        
+
         target_dir = parts[1]
-        
+
         # 处理相对路径
         if target_dir == "..":
             new_dir = self.current_dir.parent
@@ -190,24 +219,24 @@ class TerminalTool(Tool):
             new_dir = self.workspace
         else:
             new_dir = (self.current_dir / target_dir).resolve()
-        
+
         # 检查是否在工作目录内
         try:
             new_dir.relative_to(self.workspace)
         except ValueError:
             return f"❌ 不允许访问工作目录外的路径: {new_dir}"
-        
+
         # 检查目录是否存在
         if not new_dir.exists():
             return f"❌ 目录不存在: {new_dir}"
-        
+
         if not new_dir.is_dir():
             return f"❌ 不是目录: {new_dir}"
-        
+
         # 更新当前目录
         self.current_dir = new_dir
         return f"✅ 切换到目录: {self.current_dir}"
-    
+
     def _execute_command(self, command: str) -> str:
         """执行命令"""
         try:
@@ -221,7 +250,7 @@ class TerminalTool(Tool):
                     capture_output=True,
                     text=True,
                     timeout=self.timeout,
-                    env=os.environ.copy()
+                    env=os.environ.copy(),
                 )
             else:
                 # Unix系统（Linux/Mac）使用shell=True
@@ -232,7 +261,7 @@ class TerminalTool(Tool):
                     capture_output=True,
                     text=True,
                     timeout=self.timeout,
-                    env=os.environ.copy()
+                    env=os.environ.copy(),
                 )
 
             # 合并标准输出和标准错误
@@ -242,7 +271,7 @@ class TerminalTool(Tool):
 
             # 检查输出大小
             if len(output) > self.max_output_size:
-                output = output[:self.max_output_size]
+                output = output[: self.max_output_size]
                 output += f"\n\n⚠️ 输出被截断（超过 {self.max_output_size} 字节）"
 
             # 添加返回码信息
@@ -267,4 +296,3 @@ class TerminalTool(Tool):
     def get_os_type(self) -> str:
         """获取当前操作系统类型"""
         return self.os_type
-

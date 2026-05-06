@@ -3,8 +3,7 @@
 本模块封装了TRL的各种训练器，提供统一的接口。
 """
 
-from typing import Optional, Callable, Dict, Any
-from pathlib import Path
+from typing import Optional, Callable
 
 from .utils import TrainingConfig, check_trl_installation, get_installation_guide
 
@@ -76,9 +75,9 @@ try:
 
         def on_epoch_end(self, args, state, control, **kwargs):
             """Epoch结束回调"""
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
             print(f"✅ Epoch {self.current_epoch + 1} 完成")
-            print(f"{'='*80}\n")
+            print(f"{'=' * 80}\n")
 
 except ImportError:
     # 如果transformers未安装,创建一个空的回调类
@@ -89,35 +88,35 @@ except ImportError:
 
 class BaseTrainerWrapper:
     """训练器基类"""
-    
+
     def __init__(self, config: Optional[TrainingConfig] = None):
         """
         初始化训练器
-        
+
         Args:
             config: 训练配置
         """
         # 检查TRL是否安装
         if not check_trl_installation():
             raise ImportError(get_installation_guide())
-        
+
         self.config = config or TrainingConfig()
         self.trainer = None
         self.model = None
         self.tokenizer = None
-    
+
     def setup_model(self):
         """设置模型和tokenizer"""
         raise NotImplementedError
-    
+
     def train(self):
         """开始训练"""
         raise NotImplementedError
-    
+
     def save_model(self, output_dir: Optional[str] = None):
         """
         保存模型
-        
+
         Args:
             output_dir: 输出目录
         """
@@ -131,58 +130,53 @@ class BaseTrainerWrapper:
 
 class SFTTrainerWrapper(BaseTrainerWrapper):
     """SFT (Supervised Fine-Tuning) 训练器封装
-    
+
     用于监督微调，让模型学会遵循指令和基本的推理格式。
     """
-    
-    def __init__(
-        self,
-        config: Optional[TrainingConfig] = None,
-        dataset = None
-    ):
+
+    def __init__(self, config: Optional[TrainingConfig] = None, dataset=None):
         """
         初始化SFT训练器
-        
+
         Args:
             config: 训练配置
             dataset: 训练数据集
         """
         super().__init__(config)
         self.dataset = dataset
-    
+
     def setup_model(self):
         """设置模型和tokenizer"""
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        
+
         print(f"📦 加载模型: {self.config.model_name}")
-        
+
         # 加载tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config.model_name,
-            trust_remote_code=True
+            self.config.model_name, trust_remote_code=True
         )
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        
+
         # 加载模型
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name,
             trust_remote_code=True,
-            device_map="auto" if self.config.use_fp16 or self.config.use_bf16 else None
+            device_map="auto" if self.config.use_fp16 or self.config.use_bf16 else None,
         )
-        
+
         print("✅ 模型加载完成")
-    
+
     def train(self):
         """开始SFT训练"""
         from trl import SFTConfig, SFTTrainer
-        
+
         if self.model is None:
             self.setup_model()
-        
+
         if self.dataset is None:
             raise ValueError("数据集未设置，请提供训练数据集")
-        
+
         # 配置训练参数
         # 确定report_to参数
         report_to = []
@@ -208,17 +202,19 @@ class SFTTrainerWrapper(BaseTrainerWrapper):
             max_length=self.config.max_length,  # 修正参数名
             report_to=report_to,
         )
-        
+
         # 计算总步数
         total_steps = (
-            len(self.dataset) //
-            (self.config.per_device_train_batch_size * self.config.gradient_accumulation_steps)
+            len(self.dataset)
+            // (
+                self.config.per_device_train_batch_size
+                * self.config.gradient_accumulation_steps
+            )
         ) * self.config.num_train_epochs
 
         # 创建详细日志回调
         logging_callback = DetailedLoggingCallback(
-            total_steps=total_steps,
-            num_epochs=self.config.num_train_epochs
+            total_steps=total_steps, num_epochs=self.config.num_train_epochs
         )
 
         # 创建训练器
@@ -231,30 +227,30 @@ class SFTTrainerWrapper(BaseTrainerWrapper):
         )
 
         print("\n🚀 开始SFT训练...")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
         self.trainer.train()
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("✅ SFT训练完成")
-        
+
         return self.trainer
 
 
 class GRPOTrainerWrapper(BaseTrainerWrapper):
     """GRPO (Group Relative Policy Optimization) 训练器封装
-    
+
     用于强化学习训练，优化模型的推理能力。
     GRPO相比PPO更简单，不需要Value Model。
     """
-    
+
     def __init__(
         self,
         config: Optional[TrainingConfig] = None,
-        dataset = None,
-        reward_fn: Optional[Callable] = None
+        dataset=None,
+        reward_fn: Optional[Callable] = None,
     ):
         """
         初始化GRPO训练器
-        
+
         Args:
             config: 训练配置
             dataset: 训练数据集
@@ -263,43 +259,42 @@ class GRPOTrainerWrapper(BaseTrainerWrapper):
         super().__init__(config)
         self.dataset = dataset
         self.reward_fn = reward_fn
-    
+
     def setup_model(self):
         """设置模型和tokenizer"""
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        
+
         print(f"📦 加载模型: {self.config.model_name}")
-        
+
         # 加载tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config.model_name,
-            trust_remote_code=True
+            self.config.model_name, trust_remote_code=True
         )
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        
+
         # 加载模型
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name,
             trust_remote_code=True,
-            device_map="auto" if self.config.use_fp16 or self.config.use_bf16 else None
+            device_map="auto" if self.config.use_fp16 or self.config.use_bf16 else None,
         )
-        
+
         print("✅ 模型加载完成")
-    
+
     def train(self):
         """开始GRPO训练"""
         from trl import GRPOConfig, GRPOTrainer
-        
+
         if self.model is None:
             self.setup_model()
-        
+
         if self.dataset is None:
             raise ValueError("数据集未设置，请提供训练数据集")
-        
+
         if self.reward_fn is None:
             raise ValueError("奖励函数未设置，请提供reward_fn")
-        
+
         # 确定report_to参数
         report_to = []
         if self.config.use_wandb:
@@ -324,17 +319,19 @@ class GRPOTrainerWrapper(BaseTrainerWrapper):
             report_to=report_to,
             remove_unused_columns=False,  # 保留所有列,包括ground_truth等
         )
-        
+
         # 计算总步数
         total_steps = (
-            len(self.dataset) //
-            (self.config.per_device_train_batch_size * self.config.gradient_accumulation_steps)
+            len(self.dataset)
+            // (
+                self.config.per_device_train_batch_size
+                * self.config.gradient_accumulation_steps
+            )
         ) * self.config.num_train_epochs
 
         # 创建详细日志回调
         logging_callback = DetailedLoggingCallback(
-            total_steps=total_steps,
-            num_epochs=self.config.num_train_epochs
+            total_steps=total_steps, num_epochs=self.config.num_train_epochs
         )
 
         # 创建训练器
@@ -348,30 +345,27 @@ class GRPOTrainerWrapper(BaseTrainerWrapper):
         )
 
         print("\n🚀 开始GRPO训练...")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
         self.trainer.train()
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("✅ GRPO训练完成")
-        
+
         return self.trainer
 
 
 class PPOTrainerWrapper(BaseTrainerWrapper):
     """PPO (Proximal Policy Optimization) 训练器封装
-    
+
     用于强化学习训练，是经典的RL算法。
     相比GRPO，PPO需要额外的Value Model，但可能获得更好的性能。
     """
-    
+
     def __init__(
-        self,
-        config: Optional[TrainingConfig] = None,
-        dataset = None,
-        reward_model = None
+        self, config: Optional[TrainingConfig] = None, dataset=None, reward_model=None
     ):
         """
         初始化PPO训练器
-        
+
         Args:
             config: 训练配置
             dataset: 训练数据集
@@ -380,33 +374,31 @@ class PPOTrainerWrapper(BaseTrainerWrapper):
         super().__init__(config)
         self.dataset = dataset
         self.reward_model = reward_model
-    
+
     def setup_model(self):
         """设置模型和tokenizer"""
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        
+
         print(f"📦 加载模型: {self.config.model_name}")
-        
+
         # 加载tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config.model_name,
-            trust_remote_code=True
+            self.config.model_name, trust_remote_code=True
         )
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        
+
         # 加载模型
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_name,
             trust_remote_code=True,
-            device_map="auto" if self.config.use_fp16 or self.config.use_bf16 else None
+            device_map="auto" if self.config.use_fp16 or self.config.use_bf16 else None,
         )
-        
+
         print("✅ 模型加载完成")
-    
+
     def train(self):
         """开始PPO训练"""
         print("⚠️  PPO训练器正在开发中...")
         print("   建议使用GRPO训练器，它更简单且性能相近")
         raise NotImplementedError("PPO训练器尚未实现，请使用GRPOTrainerWrapper")
-

@@ -7,11 +7,11 @@
 """
 
 from typing import Dict, Any, List, Optional
-import asyncio
 
 try:
     from a2a.client import A2AClient
     from a2a.types import Message
+
     A2A_AVAILABLE = True
 except ImportError:
     A2A_AVAILABLE = False
@@ -27,7 +27,7 @@ class A2AServer:
         name: str,
         description: str,
         version: str = "1.0.0",
-        capabilities: Optional[Dict[str, Any]] = None
+        capabilities: Optional[Dict[str, Any]] = None,
     ):
         """
         初始化 A2A 服务器
@@ -51,9 +51,11 @@ class A2AServer:
 
     def skill(self, skill_name: str):
         """装饰器方式添加技能"""
+
         def decorator(func):
             self.add_skill(skill_name, func)
             return func
+
         return decorator
 
     def run(self, host: str = "0.0.0.0", port: int = 5000):
@@ -69,81 +71,80 @@ class A2AServer:
 
         # 禁用 Flask 的日志输出（可选）
         import logging
-        log = logging.getLogger('werkzeug')
+
+        log = logging.getLogger("werkzeug")
         log.setLevel(logging.ERROR)
 
-        @app.route('/info', methods=['GET'])
+        @app.route("/info", methods=["GET"])
         def get_info():
             """获取 Agent 信息"""
             return jsonify(self.get_info())
 
-        @app.route('/skills', methods=['GET'])
+        @app.route("/skills", methods=["GET"])
         def list_skills():
             """列出所有技能"""
-            return jsonify({
-                "skills": list(self.skills.keys()),
-                "count": len(self.skills)
-            })
+            return jsonify(
+                {"skills": list(self.skills.keys()), "count": len(self.skills)}
+            )
 
-        @app.route('/execute/<skill_name>', methods=['POST'])
+        @app.route("/execute/<skill_name>", methods=["POST"])
         def execute_skill(skill_name):
             """执行指定技能"""
             if skill_name not in self.skills:
-                return jsonify({
-                    "error": f"Skill '{skill_name}' not found",
-                    "available_skills": list(self.skills.keys())
-                }), 404
+                return jsonify(
+                    {
+                        "error": f"Skill '{skill_name}' not found",
+                        "available_skills": list(self.skills.keys()),
+                    }
+                ), 404
 
             try:
                 data = request.get_json() or {}
-                text = data.get('text', data.get('query', ''))
+                text = data.get("text", data.get("query", ""))
 
                 # 调用技能函数
                 result = self.skills[skill_name](text)
 
-                return jsonify({
-                    "skill": skill_name,
-                    "result": result,
-                    "status": "success"
-                })
+                return jsonify(
+                    {"skill": skill_name, "result": result, "status": "success"}
+                )
             except Exception as e:
-                return jsonify({
-                    "error": str(e),
-                    "skill": skill_name,
-                    "status": "error"
-                }), 500
+                return jsonify(
+                    {"error": str(e), "skill": skill_name, "status": "error"}
+                ), 500
 
-        @app.route('/ask', methods=['POST'])
+        @app.route("/ask", methods=["POST"])
         def ask():
             """通用问答接口（自动选择技能）"""
             try:
                 data = request.get_json() or {}
-                question = data.get('question', data.get('text', ''))
+                question = data.get("question", data.get("text", ""))
 
                 # 简单策略：尝试所有技能，返回第一个非错误结果
                 for skill_name, skill_func in self.skills.items():
                     try:
                         result = skill_func(question)
                         if result and not result.startswith("Error"):
-                            return jsonify({
-                                "answer": result,
-                                "skill_used": skill_name,
-                                "status": "success"
-                            })
-                    except:
+                            return jsonify(
+                                {
+                                    "answer": result,
+                                    "skill_used": skill_name,
+                                    "status": "success",
+                                }
+                            )
+                    except Exception:
                         continue
 
-                return jsonify({
-                    "answer": "No suitable skill found for this question",
-                    "status": "no_match"
-                })
+                return jsonify(
+                    {
+                        "answer": "No suitable skill found for this question",
+                        "status": "no_match",
+                    }
+                )
             except Exception as e:
-                return jsonify({
-                    "error": str(e),
-                    "status": "error"
-                }), 500
+                return jsonify({"error": str(e), "status": "error"}), 500
 
-        @app.route('/health', methods=['GET'])
+        @app.route("/health", methods=["GET"])
         def health():
             """健康检查"""
             return jsonify({"status": "healthy", "agent": self.name})
@@ -152,7 +153,7 @@ class A2AServer:
         print(f"🚀 A2A 服务器 '{self.name}' 启动在 {host}:{port}")
         print(f"📋 描述: {self.description}")
         print(f"🛠️  可用技能: {list(self.skills.keys())}")
-        print(f"📡 API 端点:")
+        print("📡 API 端点:")
         print(f"   - GET  {host}:{port}/info - 获取 Agent 信息")
         print(f"   - GET  {host}:{port}/skills - 列出技能")
         print(f"   - POST {host}:{port}/execute/<skill> - 执行技能")
@@ -170,7 +171,7 @@ class A2AServer:
             "version": self.version,
             "capabilities": self.capabilities,
             "protocol": "A2A",
-            "skills": list(self.skills.keys())
+            "skills": list(self.skills.keys()),
         }
 
 
@@ -184,7 +185,7 @@ class A2AClient:
         Args:
             server_url: 服务器 URL（例如：http://localhost:5000）
         """
-        self.server_url = server_url.rstrip('/')
+        self.server_url = server_url.rstrip("/")
 
     def ask(self, question: str) -> str:
         """
@@ -198,10 +199,9 @@ class A2AClient:
         """
         try:
             import requests
+
             response = requests.post(
-                f"{self.server_url}/ask",
-                json={"question": question},
-                timeout=30
+                f"{self.server_url}/ask", json={"question": question}, timeout=30
             )
             response.raise_for_status()
             return response.json().get("answer", "No response")
@@ -221,10 +221,11 @@ class A2AClient:
         """
         try:
             import requests
+
             response = requests.post(
                 f"{self.server_url}/execute/{skill_name}",
                 json={"text": text},
-                timeout=30
+                timeout=30,
             )
             response.raise_for_status()
             return response.json()
@@ -235,6 +236,7 @@ class A2AClient:
         """获取 Agent 信息"""
         try:
             import requests
+
             response = requests.get(f"{self.server_url}/info", timeout=10)
             response.raise_for_status()
             return response.json()
@@ -245,10 +247,11 @@ class A2AClient:
         """列出 Agent 的技能"""
         try:
             import requests
+
             response = requests.get(f"{self.server_url}/skills", timeout=10)
             response.raise_for_status()
             return response.json().get("skills", [])
-        except Exception as e:
+        except Exception:
             return []
 
 
@@ -292,10 +295,7 @@ class AgentNetwork:
 
     def list_agents(self) -> List[Dict[str, Any]]:
         """列出所有 Agent"""
-        return [
-            {"name": name, "url": url}
-            for name, url in self.agents.items()
-        ]
+        return [{"name": name, "url": url} for name, url in self.agents.items()]
 
     def discover_agents(self, urls: List[str]) -> int:
         """
@@ -323,7 +323,9 @@ class AgentNetwork:
 class AgentRegistry:
     """基于官方 a2a-sdk 库的 Agent 注册中心（概念性实现）"""
 
-    def __init__(self, name: str = "Agent Registry", description: str = "Central agent registry"):
+    def __init__(
+        self, name: str = "Agent Registry", description: str = "Central agent registry"
+    ):
         """
         初始化 Agent 注册中心
 
@@ -335,12 +337,14 @@ class AgentRegistry:
         self.description = description
         self.registered_agents = {}
 
-    def register_agent(self, agent_name: str, agent_url: str, metadata: Optional[Dict[str, Any]] = None):
+    def register_agent(
+        self, agent_name: str, agent_url: str, metadata: Optional[Dict[str, Any]] = None
+    ):
         """注册 Agent"""
         self.registered_agents[agent_name] = {
             "url": agent_url,
             "metadata": metadata or {},
-            "registered_at": __import__("datetime").datetime.now().isoformat()
+            "registered_at": __import__("datetime").datetime.now().isoformat(),
         }
 
     def unregister_agent(self, agent_name: str):
@@ -350,10 +354,7 @@ class AgentRegistry:
 
     def list_agents(self) -> List[Dict[str, Any]]:
         """列出所有注册的 Agent"""
-        return [
-            {"name": name, **info}
-            for name, info in self.registered_agents.items()
-        ]
+        return [{"name": name, **info} for name, info in self.registered_agents.items()]
 
     def find_agent(self, agent_name: str) -> Optional[Dict[str, Any]]:
         """查找特定 Agent"""
@@ -366,7 +367,7 @@ class AgentRegistry:
             "description": self.description,
             "protocol": "A2A",
             "type": "registry",
-            "registered_agents": len(self.registered_agents)
+            "registered_agents": len(self.registered_agents),
         }
 
 
@@ -383,7 +384,7 @@ def create_example_agent() -> A2AServer:
         name="Example A2A Agent",
         description="A simple example A2A agent",
         version="1.0.0",
-        capabilities={"chat": True, "calculation": True}
+        capabilities={"chat": True, "calculation": True},
     )
 
     # 添加计算技能
@@ -391,7 +392,8 @@ def create_example_agent() -> A2AServer:
         """计算数学表达式"""
         # 从文本中提取表达式
         import re
-        match = re.search(r'calculate\s+(.+)', text, re.IGNORECASE)
+
+        match = re.search(r"calculate\s+(.+)", text, re.IGNORECASE)
         if match:
             expression = match.group(1).strip()
             try:
@@ -411,7 +413,8 @@ def create_example_agent() -> A2AServer:
     def greeting_skill(text: str) -> str:
         """生成问候语"""
         import re
-        match = re.search(r'hello|hi|greet', text, re.IGNORECASE)
+
+        match = re.search(r"hello|hi|greet", text, re.IGNORECASE)
         if match:
             return "Hello! I'm an A2A agent. How can I help you today?"
         return "Hi there!"
@@ -427,7 +430,7 @@ if __name__ == "__main__":
         agent = create_example_agent()
         print(f"🚀 Starting {agent.name}...")
         print(f"📝 {agent.description}")
-        print(f"🔌 Protocol: A2A")
+        print("🔌 Protocol: A2A")
         print(f"📡 Version: {agent.version}")
         print(f"🛠️ Skills: {list(agent.skills.keys())}")
         print()
@@ -436,4 +439,3 @@ if __name__ == "__main__":
         print(f"❌ {e}")
         print("💡 Install the A2A SDK: pip install a2a-sdk")
         print("📖 Official repository: https://github.com/a2aproject/a2a-python")
-

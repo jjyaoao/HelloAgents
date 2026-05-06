@@ -7,7 +7,6 @@ BFCL 数据集加载模块
 
 from typing import List, Dict, Any, Optional, Union
 import json
-import os
 from pathlib import Path
 
 
@@ -64,8 +63,10 @@ class BFCLDataset:
 
     def __init__(
         self,
-        bfcl_data_dir: Union[str, Path] = "./temp_gorilla/berkeley-function-call-leaderboard/bfcl_eval/data",
-        category: Optional[str] = None
+        bfcl_data_dir: Union[
+            str, Path
+        ] = "./temp_gorilla/berkeley-function-call-leaderboard/bfcl_eval/data",
+        category: Optional[str] = None,
     ):
         """初始化 BFCL 数据集加载器
 
@@ -81,7 +82,7 @@ class BFCLDataset:
         # 验证数据目录
         if not self.bfcl_data_dir.exists():
             print(f"   ⚠️ BFCL数据目录不存在: {self.bfcl_data_dir}")
-            print(f"   请确保已克隆BFCL仓库到正确位置")
+            print("   请确保已克隆BFCL仓库到正确位置")
 
         # 验证possible_answer目录
         self.answer_dir = self.bfcl_data_dir / "possible_answer"
@@ -95,7 +96,7 @@ class BFCLDataset:
             数据集列表，每个元素包含问题、函数定义、ground truth等
         """
         if not self.bfcl_data_dir.exists():
-            print(f"   ⚠️ 数据目录不存在，无法加载数据")
+            print("   ⚠️ 数据目录不存在，无法加载数据")
             return []
 
         # 确定要加载的文件
@@ -110,17 +111,17 @@ class BFCLDataset:
             self.data = self._load_category(filename)
         else:
             # 加载所有类别（不推荐，数据量大）
-            print(f"   ⚠️ 未指定类别，将加载simple_python作为示例")
+            print("   ⚠️ 未指定类别，将加载simple_python作为示例")
             self.data = self._load_category(self.CATEGORY_MAPPING["simple_python"])
 
-        print(f"✅ BFCL数据集加载完成")
+        print("✅ BFCL数据集加载完成")
         print(f"   数据目录: {self.bfcl_data_dir}")
         print(f"   类别: {self.category or 'simple_python'}")
         print(f"   样本数: {len(self.data)}")
         print(f"   Ground truth数: {len(self.ground_truth)}")
 
         return self.data
-    
+
     def _load_category(self, filename: str) -> List[Dict[str, Any]]:
         """加载指定类别的数据（包括测试数据和ground truth）
 
@@ -170,7 +171,7 @@ class BFCLDataset:
             数据列表
         """
         data = []
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -225,4 +226,3 @@ class BFCLDataset:
         if not self.data:
             self.load()
         return iter(self.data)
-

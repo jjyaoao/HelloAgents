@@ -139,9 +139,7 @@ class SearchTool(Tool):
         backend = backend if backend in SUPPORTED_BACKENDS else "hybrid"
 
         mode = str(
-            parameters.get("mode")
-            or parameters.get("return_mode")
-            or "text"
+            parameters.get("mode") or parameters.get("return_mode") or "text"
         ).lower()
         if mode not in SUPPORTED_RETURN_MODES:
             mode = "text"
@@ -376,7 +374,9 @@ class SearchTool(Tool):
 
         try:
             with DDGS(timeout=10) as client:  # type: ignore[call-arg]
-                search_results = client.text(query, max_results=max_results, backend="duckduckgo")
+                search_results = client.text(
+                    query, max_results=max_results, backend="duckduckgo"
+                )
         except Exception as exc:  # pragma: no cover - 网络异常
             raise RuntimeError(f"DuckDuckGo 搜索失败: {exc}")
 
@@ -500,7 +500,11 @@ class SearchTool(Tool):
         results = []
         for idx, url in enumerate(citations[:max_results], start=1):
             snippet = content if idx == 1 else "See main Perplexity response above."
-            raw = _limit_text(content, max_tokens) if fetch_full_page and idx == 1 else None
+            raw = (
+                _limit_text(content, max_tokens)
+                if fetch_full_page and idx == 1
+                else None
+            )
             results.append(
                 _normalized_result(
                     title=f"Perplexity Source {loop_count + 1}-{idx}",
@@ -609,6 +613,7 @@ class SearchTool(Tool):
 
 
 # 便捷函数
+
 
 def search(query: str, backend: str = "hybrid") -> str:
     tool = SearchTool(backend=backend)

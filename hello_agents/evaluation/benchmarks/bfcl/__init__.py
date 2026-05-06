@@ -18,11 +18,16 @@ from hello_agents.evaluation.benchmarks.bfcl.dataset import BFCLDataset
 from hello_agents.evaluation.benchmarks.bfcl.evaluator import BFCLEvaluator
 from hello_agents.evaluation.benchmarks.bfcl.metrics import BFCLMetrics
 from hello_agents.evaluation.benchmarks.bfcl.bfcl_integration import BFCLIntegration
+from hello_agents.evaluation.benchmarks.bfcl.ast_matcher import (
+    ASTMatcher,
+    create_default_matcher,
+)
 
 __all__ = [
     "BFCLDataset",
     "BFCLEvaluator",
     "BFCLMetrics",
     "BFCLIntegration",
+    "ASTMatcher",
+    "create_default_matcher",
 ]
-

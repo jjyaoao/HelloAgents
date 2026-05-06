@@ -21,6 +21,7 @@ SUPPORTED_PROVIDERS = Literal[
     "custom",
 ]
 
+
 class HelloAgentsLLM:
     """
     为HelloAgents定制的LLM客户端。
@@ -42,7 +43,7 @@ class HelloAgentsLLM:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         timeout: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ):
         """
         初始化客户端。优先使用传入参数，如果未提供，则从环境变量加载。
@@ -80,12 +81,16 @@ class HelloAgentsLLM:
         if not self.model:
             self.model = self._get_default_model()
         if not all([self.api_key, self.base_url]):
-            raise HelloAgentsException("API密钥和服务地址必须被提供或在.env文件中定义。")
+            raise HelloAgentsException(
+                "API密钥和服务地址必须被提供或在.env文件中定义。"
+            )
 
         # 创建OpenAI客户端
         self._client = self._create_client()
 
-    def _auto_detect_provider(self, api_key: Optional[str], base_url: Optional[str]) -> str:
+    def _auto_detect_provider(
+        self, api_key: Optional[str], base_url: Optional[str]
+    ) -> str:
         """
         自动检测LLM提供商
 
@@ -171,51 +176,111 @@ class HelloAgentsLLM:
         # 4. 默认返回auto，使用通用配置
         return "auto"
 
-    def _resolve_credentials(self, api_key: Optional[str], base_url: Optional[str]) -> tuple[str, str]:
+    def _resolve_credentials(
+        self, api_key: Optional[str], base_url: Optional[str]
+    ) -> tuple[str, str]:
         """根据provider解析API密钥和base_url"""
         if self.provider == "openai":
-            resolved_api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")
-            resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "https://api.openai.com/v1"
+            resolved_api_key = (
+                api_key or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")
+            )
+            resolved_base_url = (
+                base_url or os.getenv("LLM_BASE_URL") or "https://api.openai.com/v1"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "deepseek":
-            resolved_api_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY")
-            resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "https://api.deepseek.com"
+            resolved_api_key = (
+                api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY")
+            )
+            resolved_base_url = (
+                base_url or os.getenv("LLM_BASE_URL") or "https://api.deepseek.com"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "qwen":
-            resolved_api_key = api_key or os.getenv("DASHSCOPE_API_KEY") or os.getenv("LLM_API_KEY")
-            resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            resolved_api_key = (
+                api_key or os.getenv("DASHSCOPE_API_KEY") or os.getenv("LLM_API_KEY")
+            )
+            resolved_base_url = (
+                base_url
+                or os.getenv("LLM_BASE_URL")
+                or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "modelscope":
-            resolved_api_key = api_key or os.getenv("MODELSCOPE_API_KEY") or os.getenv("LLM_API_KEY")
-            resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "https://api-inference.modelscope.cn/v1/"
+            resolved_api_key = (
+                api_key or os.getenv("MODELSCOPE_API_KEY") or os.getenv("LLM_API_KEY")
+            )
+            resolved_base_url = (
+                base_url
+                or os.getenv("LLM_BASE_URL")
+                or "https://api-inference.modelscope.cn/v1/"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "kimi":
-            resolved_api_key = api_key or os.getenv("KIMI_API_KEY") or os.getenv("MOONSHOT_API_KEY") or os.getenv("LLM_API_KEY")
-            resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "https://api.moonshot.cn/v1"
+            resolved_api_key = (
+                api_key
+                or os.getenv("KIMI_API_KEY")
+                or os.getenv("MOONSHOT_API_KEY")
+                or os.getenv("LLM_API_KEY")
+            )
+            resolved_base_url = (
+                base_url or os.getenv("LLM_BASE_URL") or "https://api.moonshot.cn/v1"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "zhipu":
-            resolved_api_key = api_key or os.getenv("ZHIPU_API_KEY") or os.getenv("GLM_API_KEY") or os.getenv("LLM_API_KEY")
-            resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "https://open.bigmodel.cn/api/paas/v4"
+            resolved_api_key = (
+                api_key
+                or os.getenv("ZHIPU_API_KEY")
+                or os.getenv("GLM_API_KEY")
+                or os.getenv("LLM_API_KEY")
+            )
+            resolved_base_url = (
+                base_url
+                or os.getenv("LLM_BASE_URL")
+                or "https://open.bigmodel.cn/api/paas/v4"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "ollama":
-            resolved_api_key = api_key or os.getenv("OLLAMA_API_KEY") or os.getenv("LLM_API_KEY") or "ollama"
-            resolved_base_url = base_url or os.getenv("OLLAMA_HOST") or os.getenv("LLM_BASE_URL") or "http://localhost:11434/v1"
+            resolved_api_key = (
+                api_key
+                or os.getenv("OLLAMA_API_KEY")
+                or os.getenv("LLM_API_KEY")
+                or "ollama"
+            )
+            resolved_base_url = (
+                base_url
+                or os.getenv("OLLAMA_HOST")
+                or os.getenv("LLM_BASE_URL")
+                or "http://localhost:11434/v1"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "vllm":
-            resolved_api_key = api_key or os.getenv("VLLM_API_KEY") or os.getenv("LLM_API_KEY") or "vllm"
-            resolved_base_url = base_url or os.getenv("VLLM_HOST") or os.getenv("LLM_BASE_URL") or "http://localhost:8000/v1"
+            resolved_api_key = (
+                api_key
+                or os.getenv("VLLM_API_KEY")
+                or os.getenv("LLM_API_KEY")
+                or "vllm"
+            )
+            resolved_base_url = (
+                base_url
+                or os.getenv("VLLM_HOST")
+                or os.getenv("LLM_BASE_URL")
+                or "http://localhost:8000/v1"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "local":
             resolved_api_key = api_key or os.getenv("LLM_API_KEY") or "local"
-            resolved_base_url = base_url or os.getenv("LLM_BASE_URL") or "http://localhost:8000/v1"
+            resolved_base_url = (
+                base_url or os.getenv("LLM_BASE_URL") or "http://localhost:8000/v1"
+            )
             return resolved_api_key, resolved_base_url
 
         elif self.provider == "custom":
@@ -232,11 +297,9 @@ class HelloAgentsLLM:
     def _create_client(self) -> OpenAI:
         """创建OpenAI客户端"""
         return OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=self.timeout
+            api_key=self.api_key, base_url=self.base_url, timeout=self.timeout
         )
-    
+
     def _get_default_model(self) -> str:
         """获取默认模型"""
         if self.provider == "openai":
@@ -282,7 +345,9 @@ class HelloAgentsLLM:
             else:
                 return "gpt-3.5-turbo"
 
-    def think(self, messages: list[dict[str, str]], temperature: Optional[float] = None) -> Iterator[str]:
+    def think(
+        self, messages: list[dict[str, str]], temperature: Optional[float] = None
+    ) -> Iterator[str]:
         """
         调用大语言模型进行思考，并返回流式响应。
         这是主要的调用方法，默认使用流式响应以获得更好的用户体验。
@@ -299,7 +364,9 @@ class HelloAgentsLLM:
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=temperature if temperature is not None else self.temperature,
+                temperature=temperature
+                if temperature is not None
+                else self.temperature,
                 max_tokens=self.max_tokens,
                 stream=True,
             )
@@ -326,9 +393,13 @@ class HelloAgentsLLM:
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=kwargs.get('temperature', self.temperature),
-                max_tokens=kwargs.get('max_tokens', self.max_tokens),
-                **{k: v for k, v in kwargs.items() if k not in ['temperature', 'max_tokens']}
+                temperature=kwargs.get("temperature", self.temperature),
+                max_tokens=kwargs.get("max_tokens", self.max_tokens),
+                **{
+                    k: v
+                    for k, v in kwargs.items()
+                    if k not in ["temperature", "max_tokens"]
+                },
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -339,5 +410,5 @@ class HelloAgentsLLM:
         流式调用LLM的别名方法，与think方法功能相同。
         保持向后兼容性。
         """
-        temperature = kwargs.get('temperature')
+        temperature = kwargs.get("temperature")
         yield from self.think(messages, temperature)

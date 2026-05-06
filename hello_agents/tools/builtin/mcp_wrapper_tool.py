@@ -5,17 +5,17 @@ MCP工具包装器 - 将单个MCP工具包装成HelloAgents Tool
 使得Agent可以像调用普通工具一样调用MCP工具。
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from ..base import Tool, ToolParameter
 
 
 class MCPWrappedTool(Tool):
     """
     MCP工具包装器 - 将单个MCP工具包装成HelloAgents Tool
-    
+
     这个类将MCP服务器的一个工具（如 read_file）包装成一个独立的Tool对象。
     Agent调用时只需提供参数，无需了解MCP的内部结构。
-    
+
     示例：
         >>> # 内部使用，由MCPTool自动创建
         >>> wrapped_tool = MCPWrappedTool(
@@ -27,11 +27,13 @@ class MCPWrappedTool(Tool):
         ...     }
         ... )
     """
-    
-    def __init__(self,
-                 mcp_tool: 'MCPTool',  # type: ignore
-                 tool_info: Dict[str, Any],
-                 prefix: str = ""):
+
+    def __init__(
+        self,
+        mcp_tool: "MCPTool",  # type: ignore  # noqa: F821
+        tool_info: Dict[str, Any],
+        prefix: str = "",
+    ):
         """
         初始化MCP包装工具
 
@@ -42,23 +44,20 @@ class MCPWrappedTool(Tool):
         """
         self.mcp_tool = mcp_tool
         self.tool_info = tool_info
-        self.mcp_tool_name = tool_info.get('name', 'unknown')
+        self.mcp_tool_name = tool_info.get("name", "unknown")
 
         # 构建工具名：prefix + mcp_tool_name
         tool_name = f"{prefix}{self.mcp_tool_name}" if prefix else self.mcp_tool_name
 
         # 获取描述
-        description = tool_info.get('description', f'MCP工具: {self.mcp_tool_name}')
+        description = tool_info.get("description", f"MCP工具: {self.mcp_tool_name}")
 
         # 解析参数schema
-        self._parameters = self._parse_input_schema(tool_info.get('input_schema', {}))
+        self._parameters = self._parse_input_schema(tool_info.get("input_schema", {}))
 
         # 初始化父类
-        super().__init__(
-            name=tool_name,
-            description=description
-        )
-    
+        super().__init__(name=tool_name, description=description)
+
     def _parse_input_schema(self, input_schema: Dict[str, Any]) -> List[ToolParameter]:
         """
         将MCP的input_schema转换为HelloAgents的ToolParameter列表
@@ -71,23 +70,25 @@ class MCPWrappedTool(Tool):
         """
         parameters = []
 
-        properties = input_schema.get('properties', {})
-        required_fields = input_schema.get('required', [])
+        properties = input_schema.get("properties", {})
+        required_fields = input_schema.get("required", [])
 
         for param_name, param_info in properties.items():
-            param_type = param_info.get('type', 'string')
-            param_desc = param_info.get('description', '')
+            param_type = param_info.get("type", "string")
+            param_desc = param_info.get("description", "")
             is_required = param_name in required_fields
 
-            parameters.append(ToolParameter(
-                name=param_name,
-                type=param_type,  # 直接使用JSON Schema的类型字符串
-                description=param_desc,
-                required=is_required
-            ))
+            parameters.append(
+                ToolParameter(
+                    name=param_name,
+                    type=param_type,  # 直接使用JSON Schema的类型字符串
+                    description=param_desc,
+                    required=is_required,
+                )
+            )
 
         return parameters
-    
+
     def get_parameters(self) -> List[ToolParameter]:
         """
         获取工具参数定义
@@ -111,9 +112,8 @@ class MCPWrappedTool(Tool):
         mcp_params = {
             "action": "call_tool",
             "tool_name": self.mcp_tool_name,
-            "arguments": params
+            "arguments": params,
         }
 
         # 调用父MCP工具
         return self.mcp_tool.run(mcp_params)
-

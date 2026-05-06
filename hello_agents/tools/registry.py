@@ -3,6 +3,7 @@
 from typing import Optional, Any, Callable
 from .base import Tool
 
+
 class ToolRegistry:
     """
     HelloAgents工具注册表
@@ -26,7 +27,7 @@ class ToolRegistry:
             auto_expand: 是否自动展开可展开的工具（默认True）
         """
         # 检查工具是否可展开
-        if auto_expand and hasattr(tool, 'expandable') and tool.expandable:
+        if auto_expand and hasattr(tool, "expandable") and tool.expandable:
             expanded_tools = tool.get_expanded_tools()
             if expanded_tools:
                 # 注册所有展开的子工具
@@ -34,7 +35,9 @@ class ToolRegistry:
                     if sub_tool.name in self._tools:
                         print(f"⚠️ 警告：工具 '{sub_tool.name}' 已存在，将被覆盖。")
                     self._tools[sub_tool.name] = sub_tool
-                print(f"✅ 工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具")
+                print(
+                    f"✅ 工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具"
+                )
                 return
 
         # 普通工具或不展开的工具
@@ -44,7 +47,9 @@ class ToolRegistry:
         self._tools[tool.name] = tool
         print(f"✅ 工具 '{tool.name}' 已注册。")
 
-    def register_function(self, name: str, description: str, func: Callable[[str], str]):
+    def register_function(
+        self, name: str, description: str, func: Callable[[str], str]
+    ):
         """
         直接注册函数作为工具（简便方式）
 
@@ -56,10 +61,7 @@ class ToolRegistry:
         if name in self._functions:
             print(f"⚠️ 警告：工具 '{name}' 已存在，将被覆盖。")
 
-        self._functions[name] = {
-            "description": description,
-            "func": func
-        }
+        self._functions[name] = {"description": description, "func": func}
         print(f"✅ 工具 '{name}' 已注册。")
 
     def unregister(self, name: str):
@@ -145,6 +147,7 @@ class ToolRegistry:
         self._tools.clear()
         self._functions.clear()
         print("🧹 所有工具已清空。")
+
 
 # 全局工具注册表
 global_registry = ToolRegistry()
