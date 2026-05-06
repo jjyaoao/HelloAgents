@@ -8,7 +8,7 @@ from typing import Iterator, Optional, Union, TYPE_CHECKING, Any, Dict
 from ..core.agent import Agent
 from ..core.config import Config
 from ..core.llm import HelloAgentsLLM
-from ..core.message import Message
+from ..core.stream import StreamEvent
 
 if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
@@ -44,7 +44,9 @@ class FunctionCallAgent(Agent):
 
     def _get_system_prompt(self) -> str:
         """构建系统提示词，注入工具描述"""
-        base_prompt = self.system_prompt or "你是一个可靠的AI助理，能够在需要时调用工具完成任务。"
+        base_prompt = (
+            self.system_prompt or "你是一个可靠的AI助理，能够在需要时调用工具完成任务。"
+        )
 
         if not self.enable_tool_calling or not self.tool_registry:
             return base_prompt
@@ -54,7 +56,9 @@ class FunctionCallAgent(Agent):
             return base_prompt
 
         prompt = base_prompt + "\n\n## 可用工具\n"
-        prompt += "当你判断需要外部信息或执行动作时，可以直接通过函数调用使用以下工具：\n"
+        prompt += (
+            "当你判断需要外部信息或执行动作时，可以直接通过函数调用使用以下工具：\n"
+        )
         prompt += tools_description + "\n"
         prompt += "\n请主动决定是否调用工具，合理利用多次调用来获得完备答案。"
         return prompt
@@ -78,7 +82,7 @@ class FunctionCallAgent(Agent):
             for param in parameters:
                 properties[param.name] = {
                     "type": _map_parameter_type(param.type),
-                    "description": param.description or ""
+                    "description": param.description or "",
                 }
                 if param.default is not None:
                     properties[param.name]["default"] = param.default
@@ -90,11 +94,8 @@ class FunctionCallAgent(Agent):
                 "function": {
                     "name": tool.name,
                     "description": tool.description or "",
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties
-                    }
-                }
+                    "parameters": {"type": "object", "properties": properties},
+                },
             }
             if required:
                 schema["function"]["parameters"]["required"] = required
@@ -112,14 +113,11 @@ class FunctionCallAgent(Agent):
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "input": {
-                                    "type": "string",
-                                    "description": "输入文本"
-                                }
+                                "input": {"type": "string", "description": "输入文本"}
                             },
-                            "required": ["input"]
-                        }
-                    }
+                            "required": ["input"],
+                        },
+                    },
                 }
             )
 
@@ -155,7 +153,9 @@ class FunctionCallAgent(Agent):
         except json.JSONDecodeError:
             return {}
 
-    def _convert_parameter_types(self, tool_name: str, param_dict: dict[str, Any]) -> dict[str, Any]:
+    def _convert_parameter_types(
+        self, tool_name: str, param_dict: dict[str, Any]
+    ) -> dict[str, Any]:
         """根据工具定义尽可能转换参数类型"""
         if not self.tool_registry:
             return param_dict
@@ -223,7 +223,13 @@ class FunctionCallAgent(Agent):
 
         return f"❌ 错误：未找到工具 '{tool_name}'"
 
-    def _invoke_with_tools(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], tool_choice: Union[str, dict], **kwargs):
+    def _invoke_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_choice: Union[str, dict],
+        **kwargs,
+    ):
         """调用底层OpenAI客户端执行函数调用"""
         client = getattr(self.llm, "_client", None)
         if client is None:
@@ -253,11 +259,14 @@ class FunctionCallAgent(Agent):
         """
         执行函数调用范式的对话流程
         """
+        conversation_id = kwargs.pop("conversation_id", None)
+
         messages: list[dict[str, Any]] = []
         system_prompt = self._get_system_prompt()
         messages.append({"role": "system", "content": system_prompt})
 
-        for msg in self._history:
+        history = self._resolve_history(conversation_id)
+        for msg in history:
             messages.append({"role": msg.role, "content": msg.content})
 
         messages.append({"role": "user", "content": input_text})
@@ -265,12 +274,17 @@ class FunctionCallAgent(Agent):
         tool_schemas = self._build_tool_schemas()
         if not tool_schemas:
             response_text = self.llm.invoke(messages, **kwargs)
-            self.add_message(Message(input_text, "user"))
-            self.add_message(Message(response_text, "assistant"))
+            self._save_conversation_messages(input_text, response_text, conversation_id)
             return response_text
 
-        iterations_limit = max_tool_iterations if max_tool_iterations is not None else self.max_tool_iterations
-        effective_tool_choice: Union[str, dict] = tool_choice if tool_choice is not None else self.default_tool_choice
+        iterations_limit = (
+            max_tool_iterations
+            if max_tool_iterations is not None
+            else self.max_tool_iterations
+        )
+        effective_tool_choice: Union[str, dict] = (
+            tool_choice if tool_choice is not None else self.default_tool_choice
+        )
 
         current_iteration = 0
         final_response = ""
@@ -289,7 +303,10 @@ class FunctionCallAgent(Agent):
             tool_calls = list(assistant_message.tool_calls or [])
 
             if tool_calls:
-                assistant_payload: dict[str, Any] = {"role": "assistant", "content": content}
+                assistant_payload: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": content,
+                }
                 assistant_payload["tool_calls"] = []
 
                 for tool_call in tool_calls:
@@ -307,7 +324,9 @@ class FunctionCallAgent(Agent):
 
                 for tool_call in tool_calls:
                     tool_name = tool_call.function.name
-                    arguments = self._parse_function_call_arguments(tool_call.function.arguments)
+                    arguments = self._parse_function_call_arguments(
+                        tool_call.function.arguments
+                    )
                     result = self._execute_tool_call(tool_name, arguments)
                     messages.append(
                         {
@@ -332,11 +351,12 @@ class FunctionCallAgent(Agent):
                 tool_choice="none",
                 **kwargs,
             )
-            final_response = self._extract_message_content(final_choice.choices[0].message.content)
+            final_response = self._extract_message_content(
+                final_choice.choices[0].message.content
+            )
             messages.append({"role": "assistant", "content": final_response})
 
-        self.add_message(Message(input_text, "user"))
-        self.add_message(Message(final_response, "assistant"))
+        self._save_conversation_messages(input_text, final_response, conversation_id)
         return final_response
 
     def add_tool(self, tool) -> None:
@@ -352,7 +372,9 @@ class FunctionCallAgent(Agent):
             if expanded_tools:
                 for expanded_tool in expanded_tools:
                     self.tool_registry.register_tool(expanded_tool)
-                print(f"✅ MCP工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具")
+                print(
+                    f"✅ MCP工具 '{tool.name}' 已展开为 {len(expanded_tools)} 个独立工具"
+                )
                 return
 
         self.tool_registry.register_tool(tool)
@@ -373,7 +395,184 @@ class FunctionCallAgent(Agent):
     def has_tools(self) -> bool:
         return self.enable_tool_calling and self.tool_registry is not None
 
-    def stream_run(self, input_text: str, **kwargs) -> Iterator[str]:
-        """流式调用暂未实现，直接回退到一次性调用"""
-        result = self.run(input_text, **kwargs)
-        yield result
+    def _invoke_with_tools_streaming(self, messages, tools, tool_choice, **kwargs):
+        """使用流式方式调用底层OpenAI客户端"""
+        client = getattr(self.llm, "_client", None)
+        if client is None:
+            raise RuntimeError("HelloAgentsLLM 未正确初始化客户端，无法执行函数调用。")
+
+        client_kwargs = dict(kwargs)
+        client_kwargs.setdefault("temperature", self.llm.temperature)
+        if self.llm.max_tokens is not None:
+            client_kwargs.setdefault("max_tokens", self.llm.max_tokens)
+
+        return client.chat.completions.create(
+            model=self.llm.model,
+            messages=messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            stream=True,
+            stream_options={"include_usage": False},
+            **client_kwargs,
+        )
+
+    def stream_run(self, input_text: str, **kwargs) -> Iterator[StreamEvent]:
+        """
+        流式运行FunctionCallAgent，支持工具调用的实时流式输出
+
+        Args:
+            input_text: 用户输入
+            **kwargs: 支持 conversation_id 参数
+
+        Yields:
+            StreamEvent: 流式事件
+        """
+        conversation_id = kwargs.pop("conversation_id", None)
+        yield StreamEvent.status("开始生成响应")
+
+        messages: list[dict[str, Any]] = []
+        system_prompt = self._get_system_prompt()
+        messages.append({"role": "system", "content": system_prompt})
+
+        history = self._resolve_history(conversation_id)
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+
+        messages.append({"role": "user", "content": input_text})
+
+        tool_schemas = self._build_tool_schemas()
+        if not tool_schemas:
+            full_response = ""
+            for chunk in self.llm.stream_invoke(messages, **kwargs):
+                full_response += chunk
+                yield StreamEvent.text(chunk)
+            self._save_conversation_messages(input_text, full_response, conversation_id)
+            yield StreamEvent.done(full_response)
+            return
+
+        iterations_limit = kwargs.get("max_tool_iterations", self.max_tool_iterations)
+        effective_tool_choice: Union[str, dict] = kwargs.get(
+            "tool_choice", self.default_tool_choice
+        )
+
+        current_iteration = 0
+        full_response = ""
+
+        while current_iteration < iterations_limit:
+            stream = self._invoke_with_tools_streaming(
+                messages,
+                tools=tool_schemas,
+                tool_choice=effective_tool_choice,
+                **{
+                    k: v
+                    for k, v in kwargs.items()
+                    if k not in ["max_tool_iterations", "tool_choice"]
+                },
+            )
+
+            content_parts: list[str] = []
+            tool_call_accumulators: dict[int, dict[str, Any]] = {}
+            _current_tool_index: Optional[int] = None
+
+            for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta is None:
+                    continue
+
+                # 文本内容块
+                if delta.content:
+                    content_parts.append(delta.content)
+                    yield StreamEvent.text(delta.content)
+
+                # 工具调用累计（OpenAI 流式工具调用）
+                if delta.tool_calls:
+                    for tc_chunk in delta.tool_calls:
+                        idx = tc_chunk.index
+                        if idx not in tool_call_accumulators:
+                            tool_call_accumulators[idx] = {
+                                "id": "",
+                                "type": "function",
+                                "function": {"name": "", "arguments": ""},
+                            }
+                        acc = tool_call_accumulators[idx]
+                        if tc_chunk.id:
+                            acc["id"] = tc_chunk.id
+                        if tc_chunk.function:
+                            if tc_chunk.function.name:
+                                acc["function"]["name"] = tc_chunk.function.name
+                            if tc_chunk.function.arguments:
+                                acc["function"]["arguments"] += (
+                                    tc_chunk.function.arguments
+                                )
+
+            content = "".join(content_parts)
+            collected_tool_calls = list(tool_call_accumulators.values())
+
+            if collected_tool_calls:
+                yield StreamEvent.status(
+                    f"正在调用 {len(collected_tool_calls)} 个工具..."
+                )
+
+                assistant_payload: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": content,
+                }
+                assistant_payload["tool_calls"] = []
+
+                for tc in collected_tool_calls:
+                    yield StreamEvent.tool_call(
+                        tc["function"]["name"], tc["function"]["arguments"]
+                    )
+                    assistant_payload["tool_calls"].append(
+                        {
+                            "id": tc["id"],
+                            "type": tc["type"],
+                            "function": {
+                                "name": tc["function"]["name"],
+                                "arguments": tc["function"]["arguments"],
+                            },
+                        }
+                    )
+
+                messages.append(assistant_payload)
+
+                for tc in collected_tool_calls:
+                    tool_name = tc["function"]["name"]
+                    arguments = self._parse_function_call_arguments(
+                        tc["function"]["arguments"]
+                    )
+                    result = self._execute_tool_call(tool_name, arguments)
+                    yield StreamEvent.tool_result(tool_name, result)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "name": tool_name,
+                            "content": result,
+                        }
+                    )
+
+                current_iteration += 1
+                full_response += content
+                continue
+
+            # 没有工具调用，这是最终回答
+            full_response += content
+            messages.append({"role": "assistant", "content": content})
+            break
+
+        if current_iteration >= iterations_limit and not full_response:
+            final_choice = self._invoke_with_tools(
+                messages,
+                tools=tool_schemas,
+                tool_choice="none",
+                **kwargs,
+            )
+            final_text = self._extract_message_content(
+                final_choice.choices[0].message.content
+            )
+            yield StreamEvent.text(final_text)
+            full_response = final_text
+
+        self._save_conversation_messages(input_text, full_response, conversation_id)
+        yield StreamEvent.done(full_response)

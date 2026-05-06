@@ -3,7 +3,6 @@
 import os
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
-from pathlib import Path
 
 
 @dataclass
@@ -13,7 +12,7 @@ class TrainingConfig:
     # 模型配置
     model_name: str = "Qwen/Qwen3-0.6B"
     model_revision: Optional[str] = None
-    
+
     # 训练配置
     output_dir: str = "./output"
     num_train_epochs: int = 3
@@ -24,65 +23,64 @@ class TrainingConfig:
     logging_steps: int = 10
     save_steps: int = 500
     eval_steps: int = 500
-    
+
     # RL特定配置
     max_new_tokens: int = 512
     temperature: float = 0.7
     top_p: float = 0.9
-    
+
     # 硬件配置
     use_fp16: bool = True
     use_bf16: bool = False
     gradient_checkpointing: bool = True
-    
+
     # LoRA配置
     use_lora: bool = True
     lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.05
     lora_target_modules: list = field(default_factory=lambda: ["q_proj", "v_proj"])
-    
+
     # 监控配置
     use_wandb: bool = False
     wandb_project: Optional[str] = None
     use_tensorboard: bool = True
-    
+
     # 其他配置
     seed: int = 42
     max_length: int = 2048
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
-        return {
-            k: v for k, v in self.__dict__.items()
-            if not k.startswith('_')
-        }
+        return {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
 
 
 def setup_training_environment(config: TrainingConfig) -> None:
     """
     设置训练环境
-    
+
     Args:
         config: 训练配置
     """
     # 创建输出目录
     os.makedirs(config.output_dir, exist_ok=True)
-    
+
     # 设置随机种子
     import random
     import numpy as np
+
     try:
         import torch
+
         torch.manual_seed(config.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(config.seed)
     except ImportError:
         pass
-    
+
     random.seed(config.seed)
     np.random.seed(config.seed)
-    
+
     # 设置环境变量
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -92,7 +90,7 @@ def setup_training_environment(config: TrainingConfig) -> None:
             os.environ["WANDB_PROJECT"] = config.wandb_project
         os.environ["WANDB_LOG_MODEL"] = "false"  # 不上传模型文件
 
-    print(f"✅ 训练环境设置完成")
+    print("✅ 训练环境设置完成")
     print(f"   - 输出目录: {config.output_dir}")
     print(f"   - 随机种子: {config.seed}")
     print(f"   - 模型: {config.model_name}")
@@ -101,12 +99,13 @@ def setup_training_environment(config: TrainingConfig) -> None:
 def check_trl_installation() -> bool:
     """
     检查TRL是否已安装
-    
+
     Returns:
         是否已安装TRL
     """
     try:
-        import trl
+        import trl  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -115,7 +114,7 @@ def check_trl_installation() -> bool:
 def get_installation_guide() -> str:
     """
     获取TRL安装指南
-    
+
     Returns:
         安装指南文本
     """
@@ -147,17 +146,17 @@ TRL (Transformer Reinforcement Learning) 未安装。
 def format_training_time(seconds: float) -> str:
     """
     格式化训练时间
-    
+
     Args:
         seconds: 秒数
-        
+
     Returns:
         格式化的时间字符串
     """
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
-    
+
     if hours > 0:
         return f"{hours}h {minutes}m {secs}s"
     elif minutes > 0:
@@ -169,7 +168,7 @@ def format_training_time(seconds: float) -> str:
 def get_device_info() -> Dict[str, Any]:
     """
     获取设备信息
-    
+
     Returns:
         设备信息字典
     """
@@ -178,29 +177,26 @@ def get_device_info() -> Dict[str, Any]:
         "cuda_device_count": 0,
         "cuda_device_name": None,
     }
-    
+
     try:
         import torch
+
         info["cuda_available"] = torch.cuda.is_available()
         if info["cuda_available"]:
             info["cuda_device_count"] = torch.cuda.device_count()
             info["cuda_device_name"] = torch.cuda.get_device_name(0)
     except ImportError:
         pass
-    
+
     return info
 
 
 def print_training_summary(
-    algorithm: str,
-    model_name: str,
-    dataset_name: str,
-    num_epochs: int,
-    output_dir: str
+    algorithm: str, model_name: str, dataset_name: str, num_epochs: int, output_dir: str
 ) -> None:
     """
     打印训练摘要
-    
+
     Args:
         algorithm: 算法名称
         model_name: 模型名称
@@ -209,17 +205,16 @@ def print_training_summary(
         output_dir: 输出目录
     """
     device_info = get_device_info()
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print(f"🚀 开始 {algorithm} 训练")
-    print("="*60)
+    print("=" * 60)
     print(f"📦 模型: {model_name}")
     print(f"📊 数据集: {dataset_name}")
     print(f"🔄 训练轮数: {num_epochs}")
     print(f"💾 输出目录: {output_dir}")
     print(f"🖥️  设备: {'GPU' if device_info['cuda_available'] else 'CPU'}")
-    if device_info['cuda_available']:
+    if device_info["cuda_available"]:
         print(f"   - GPU数量: {device_info['cuda_device_count']}")
         print(f"   - GPU型号: {device_info['cuda_device_name']}")
-    print("="*60 + "\n")
-
+    print("=" * 60 + "\n")

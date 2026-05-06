@@ -1,10 +1,10 @@
 """Reflection Agent实现 - 自我反思与迭代优化的智能体"""
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterator
 from ..core.agent import Agent
 from ..core.llm import HelloAgentsLLM
 from ..core.config import Config
-from ..core.message import Message
+from ..core.stream import StreamEvent
 
 # 默认提示词模板
 DEFAULT_PROMPTS = {
@@ -40,13 +40,15 @@ DEFAULT_PROMPTS = {
 {feedback}
 
 请提供一个改进后的回答。
-"""
+""",
 }
+
 
 class Memory:
     """
     简单的短期记忆模块，用于存储智能体的行动与反思轨迹。
     """
+
     def __init__(self):
         self.records: List[Dict[str, Any]] = []
 
@@ -59,18 +61,19 @@ class Memory:
         """将所有记忆记录格式化为一个连贯的字符串文本"""
         trajectory = ""
         for record in self.records:
-            if record['type'] == 'execution':
+            if record["type"] == "execution":
                 trajectory += f"--- 上一轮尝试 (代码) ---\n{record['content']}\n\n"
-            elif record['type'] == 'reflection':
+            elif record["type"] == "reflection":
                 trajectory += f"--- 评审员反馈 ---\n{record['content']}\n\n"
         return trajectory.strip()
 
     def get_last_execution(self) -> str:
         """获取最近一次的执行结果"""
         for record in reversed(self.records):
-            if record['type'] == 'execution':
-                return record['content']
+            if record["type"] == "execution":
+                return record["content"]
         return ""
+
 
 class ReflectionAgent(Agent):
     """
@@ -94,7 +97,7 @@ class ReflectionAgent(Agent):
         system_prompt: Optional[str] = None,
         config: Optional[Config] = None,
         max_iterations: int = 3,
-        custom_prompts: Optional[Dict[str, str]] = None
+        custom_prompts: Optional[Dict[str, str]] = None,
     ):
         """
         初始化ReflectionAgent
@@ -113,54 +116,47 @@ class ReflectionAgent(Agent):
 
         # 设置提示词模板：用户自定义优先，否则使用默认模板
         self.prompts = custom_prompts if custom_prompts else DEFAULT_PROMPTS
-    
+
     def run(self, input_text: str, **kwargs) -> str:
         """
         运行Reflection Agent
 
         Args:
             input_text: 任务描述
-            **kwargs: 其他参数
+            **kwargs: 支持 conversation_id 参数
 
         Returns:
             最终优化后的结果
         """
+        conversation_id = kwargs.pop("conversation_id", None)
+
         print(f"\n🤖 {self.name} 开始处理任务: {input_text}")
 
-        # 重置记忆
         self.memory = Memory()
 
-        # 1. 初始执行
         print("\n--- 正在进行初始尝试 ---")
         initial_prompt = self.prompts["initial"].format(task=input_text)
         initial_result = self._get_llm_response(initial_prompt, **kwargs)
         self.memory.add_record("execution", initial_result)
 
-        # 2. 迭代循环：反思与优化
         for i in range(self.max_iterations):
-            print(f"\n--- 第 {i+1}/{self.max_iterations} 轮迭代 ---")
+            print(f"\n--- 第 {i + 1}/{self.max_iterations} 轮迭代 ---")
 
-            # a. 反思
             print("\n-> 正在进行反思...")
             last_result = self.memory.get_last_execution()
             reflect_prompt = self.prompts["reflect"].format(
-                task=input_text,
-                content=last_result
+                task=input_text, content=last_result
             )
             feedback = self._get_llm_response(reflect_prompt, **kwargs)
             self.memory.add_record("reflection", feedback)
 
-            # b. 检查是否需要停止
             if "无需改进" in feedback or "no need for improvement" in feedback.lower():
                 print("\n✅ 反思认为结果已无需改进，任务完成。")
                 break
 
-            # c. 优化
             print("\n-> 正在进行优化...")
             refine_prompt = self.prompts["refine"].format(
-                task=input_text,
-                last_attempt=last_result,
-                feedback=feedback
+                task=input_text, last_attempt=last_result, feedback=feedback
             )
             refined_result = self._get_llm_response(refine_prompt, **kwargs)
             self.memory.add_record("execution", refined_result)
@@ -168,12 +164,85 @@ class ReflectionAgent(Agent):
         final_result = self.memory.get_last_execution()
         print(f"\n--- 任务完成 ---\n最终结果:\n{final_result}")
 
-        # 保存到历史记录
-        self.add_message(Message(input_text, "user"))
-        self.add_message(Message(final_result, "assistant"))
+        self._save_conversation_messages(input_text, final_result, conversation_id)
 
         return final_result
-    
+
+    def stream_run(self, input_text: str, **kwargs) -> Iterator[StreamEvent]:
+        """
+        流式运行Reflection Agent，输出初始结果、反思过程和优化结果
+
+        Args:
+            input_text: 任务描述
+            **kwargs: 支持 conversation_id 参数
+
+        Yields:
+            StreamEvent: 流式事件
+        """
+        conversation_id = kwargs.pop("conversation_id", None)
+        yield StreamEvent.status(f"开始处理任务: {input_text}")
+
+        self.memory = Memory()
+
+        yield StreamEvent.status("正在进行初始尝试...")
+        initial_prompt = self.prompts["initial"].format(task=input_text)
+
+        initial_result = ""
+        for chunk in self.llm.stream_invoke(
+            [{"role": "user", "content": initial_prompt}], **kwargs
+        ):
+            if chunk:
+                initial_result += chunk
+                yield StreamEvent.text(chunk)
+
+        self.memory.add_record("execution", initial_result)
+
+        for i in range(self.max_iterations):
+            yield StreamEvent.status(f"第 {i + 1}/{self.max_iterations} 轮迭代")
+
+            yield StreamEvent.status("正在进行反思...")
+            last_result = self.memory.get_last_execution()
+            reflect_prompt = self.prompts["reflect"].format(
+                task=input_text, content=last_result
+            )
+
+            feedback = ""
+            for chunk in self.llm.stream_invoke(
+                [{"role": "user", "content": reflect_prompt}], **kwargs
+            ):
+                if chunk:
+                    feedback += chunk
+            try:
+                yield StreamEvent.thought(feedback)
+            except Exception:
+                pass
+
+            self.memory.add_record("reflection", feedback)
+
+            if "无需改进" in feedback or "no need for improvement" in feedback.lower():
+                yield StreamEvent.status("结果已无需改进，任务完成")
+                break
+
+            yield StreamEvent.status("正在进行优化...")
+            refine_prompt = self.prompts["refine"].format(
+                task=input_text, last_attempt=last_result, feedback=feedback
+            )
+
+            refined_result = ""
+            for chunk in self.llm.stream_invoke(
+                [{"role": "user", "content": refine_prompt}], **kwargs
+            ):
+                if chunk:
+                    refined_result += chunk
+                    yield StreamEvent.text(chunk)
+
+            self.memory.add_record("execution", refined_result)
+
+        final_result = self.memory.get_last_execution()
+
+        self._save_conversation_messages(input_text, final_result, conversation_id)
+        yield StreamEvent.done(final_result)
+
     def _get_llm_response(self, prompt: str, **kwargs) -> str:
         """调用LLM并获取完整响应"""
         messages = [{"role": "user", "content": prompt}]

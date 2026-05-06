@@ -11,11 +11,8 @@
 
 from typing import Optional, Dict, Any, List
 
-from .implementation import (
-    ANPDiscovery,
-    ANPNetwork,
-    ServiceInfo
-)
+from .implementation import ANPDiscovery, ANPNetwork, ServiceInfo
+
 
 def register_service(
     discovery: ANPDiscovery,
@@ -25,7 +22,7 @@ def register_service(
     endpoint: Optional[str] = None,
     service_name: Optional[str] = None,
     capabilities: Optional[List[str]] = None,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """注册服务的便捷函数
 
@@ -58,13 +55,15 @@ def register_service(
             endpoint=endpoint,
             service_name=service_name,
             capabilities=capabilities,
-            metadata=metadata
+            metadata=metadata,
         )
         return discovery.register_service(service_info)
+
 
 def discover_service(discovery: ANPDiscovery, service_type: str = None):
     """发现服务的便捷函数"""
     return discovery.discover_services(service_type=service_type)
+
 
 __all__ = [
     "ANPDiscovery",
@@ -73,4 +72,3 @@ __all__ = [
     "register_service",
     "discover_service",
 ]
-

@@ -17,10 +17,15 @@ GAIA 是由 Meta 开发的通用AI助手评估基准,包含466个真实世界问
 from hello_agents.evaluation.benchmarks.gaia.dataset import GAIADataset
 from hello_agents.evaluation.benchmarks.gaia.evaluator import GAIAEvaluator
 from hello_agents.evaluation.benchmarks.gaia.metrics import GAIAMetrics
+from hello_agents.evaluation.benchmarks.gaia.smart_answer_matcher import (
+    SmartAnswerMatcher,
+    MatchResult,
+)
 
 __all__ = [
     "GAIADataset",
     "GAIAEvaluator",
     "GAIAMetrics",
+    "SmartAnswerMatcher",
+    "MatchResult",
 ]
-

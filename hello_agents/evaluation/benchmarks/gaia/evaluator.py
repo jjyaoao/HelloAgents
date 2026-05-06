@@ -4,7 +4,7 @@ GAIA 评估器模块
 负责评估智能体在 GAIA 基准测试上的表现
 """
 
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, Optional, Union
 import time
 import re
 import json
@@ -38,7 +38,7 @@ class GAIAEvaluator:
         dataset: Optional[GAIADataset] = None,
         level: Optional[int] = None,
         local_data_dir: Optional[str] = None,
-        strict_mode: bool = True
+        strict_mode: bool = True,
     ):
         """初始化 GAIA 评估器
 
@@ -49,13 +49,12 @@ class GAIAEvaluator:
             strict_mode: 是否使用严格匹配模式
         """
         self.dataset = dataset or GAIADataset(
-            level=level,
-            local_data_dir=local_data_dir
+            level=level, local_data_dir=local_data_dir
         )
         self.metrics = GAIAMetrics()
         self.level = level
         self.strict_mode = strict_mode
-        
+
     def evaluate(self, agent: Any, max_samples: Optional[int] = None) -> Dict[str, Any]:
         """评估智能体
 
@@ -66,7 +65,7 @@ class GAIAEvaluator:
         Returns:
             评估结果字典,包含各项指标
         """
-        print(f"\n🌟 开始 GAIA 评估...")
+        print("\n🌟 开始 GAIA 评估...")
         print(f"   智能体: {getattr(agent, 'name', 'Unknown')}")
         print(f"   难度级别: {self.level or '全部'}")
         print(f"   匹配模式: {'严格' if self.strict_mode else '宽松'}")
@@ -85,13 +84,15 @@ class GAIAEvaluator:
 
         # 执行评估
         results = []
-        level_stats = {1: {"total": 0, "correct": 0, "partial": 0},
-                      2: {"total": 0, "correct": 0, "partial": 0},
-                      3: {"total": 0, "correct": 0, "partial": 0}}
+        level_stats = {
+            1: {"total": 0, "correct": 0, "partial": 0},
+            2: {"total": 0, "correct": 0, "partial": 0},
+            3: {"total": 0, "correct": 0, "partial": 0},
+        }
 
         for i, sample in enumerate(dataset):
             if i % 10 == 0:
-                print(f"   进度: {i+1}/{len(dataset)}")
+                print(f"   进度: {i + 1}/{len(dataset)}")
 
             try:
                 sample_result = self.evaluate_sample(agent, sample)
@@ -108,14 +109,16 @@ class GAIAEvaluator:
 
             except Exception as e:
                 print(f"   ⚠️ 样本 {i} 评估失败: {e}")
-                results.append({
-                    "exact_match": False,
-                    "partial_match": False,
-                    "predicted": None,
-                    "expected": sample.get("final_answer"),
-                    "error": str(e),
-                    "score": 0.0
-                })
+                results.append(
+                    {
+                        "exact_match": False,
+                        "partial_match": False,
+                        "predicted": None,
+                        "expected": sample.get("final_answer"),
+                        "error": str(e),
+                        "score": 0.0,
+                    }
+                )
 
         # 计算总体指标
         total_samples = len(results)
@@ -123,7 +126,9 @@ class GAIAEvaluator:
         partial_matches = sum(1 for r in results if r["partial_match"])
 
         exact_match_rate = exact_matches / total_samples if total_samples > 0 else 0.0
-        partial_match_rate = partial_matches / total_samples if total_samples > 0 else 0.0
+        partial_match_rate = (
+            partial_matches / total_samples if total_samples > 0 else 0.0
+        )
 
         # 计算分级指标
         level_metrics = {}
@@ -134,12 +139,12 @@ class GAIAEvaluator:
                     "exact_matches": stats["correct"],
                     "partial_matches": stats["partial"],
                     "exact_match_rate": stats["correct"] / stats["total"],
-                    "partial_match_rate": stats["partial"] / stats["total"]
+                    "partial_match_rate": stats["partial"] / stats["total"],
                 }
 
         final_results = {
             "benchmark": "GAIA",
-            "agent_name": getattr(agent, 'name', 'Unknown'),
+            "agent_name": getattr(agent, "name", "Unknown"),
             "strict_mode": self.strict_mode,
             "level_filter": self.level,
             "total_samples": total_samples,
@@ -148,17 +153,19 @@ class GAIAEvaluator:
             "exact_match_rate": exact_match_rate,
             "partial_match_rate": partial_match_rate,
             "level_metrics": level_metrics,
-            "detailed_results": results
+            "detailed_results": results,
         }
 
-        print(f"✅ GAIA 评估完成")
+        print("✅ GAIA 评估完成")
         print(f"   精确匹配率: {exact_match_rate:.2%}")
         print(f"   部分匹配率: {partial_match_rate:.2%}")
         for level_name, metrics in level_metrics.items():
-            print(f"   {level_name}: {metrics['exact_match_rate']:.2%} 精确 / {metrics['partial_match_rate']:.2%} 部分")
+            print(
+                f"   {level_name}: {metrics['exact_match_rate']:.2%} 精确 / {metrics['partial_match_rate']:.2%} 部分"
+            )
 
         return final_results
-    
+
     def evaluate_sample(self, agent: Any, sample: Dict[str, Any]) -> Dict[str, Any]:
         """评估单个样本
 
@@ -208,7 +215,7 @@ class GAIAEvaluator:
                 "predicted": predicted_answer,
                 "expected": expected_answer,
                 "response": response,
-                "execution_time": execution_time
+                "execution_time": execution_time,
             }
 
         except Exception as e:
@@ -220,14 +227,14 @@ class GAIAEvaluator:
                 "score": 0.0,
                 "predicted": None,
                 "expected": sample.get("final_answer", ""),
-                "error": str(e)
+                "error": str(e),
             }
 
     def _create_empty_results(self, agent: Any) -> Dict[str, Any]:
         """创建空的评估结果"""
         return {
             "benchmark": "GAIA",
-            "agent_name": getattr(agent, 'name', 'Unknown'),
+            "agent_name": getattr(agent, "name", "Unknown"),
             "strict_mode": self.strict_mode,
             "level_filter": self.level,
             "total_samples": 0,
@@ -236,7 +243,7 @@ class GAIAEvaluator:
             "exact_match_rate": 0.0,
             "partial_match_rate": 0.0,
             "level_metrics": {},
-            "detailed_results": []
+            "detailed_results": [],
         }
 
     def _build_prompt(self, question: str, sample: Dict[str, Any]) -> str:
@@ -256,20 +263,20 @@ class GAIAEvaluator:
         GAIA要求答案格式为：FINAL ANSWER: [答案]
         """
         # 首先尝试提取GAIA官方格式的答案
-        final_answer_pattern = r'FINAL ANSWER:\s*(.+?)(?:\n|$)'
+        final_answer_pattern = r"FINAL ANSWER:\s*(.+?)(?:\n|$)"
         match = re.search(final_answer_pattern, response, re.IGNORECASE | re.MULTILINE)
         if match:
             answer = match.group(1).strip()
             # 移除可能的方括号
-            answer = answer.strip('[]')
+            answer = answer.strip("[]")
             return answer
 
         # 备用方案：查找其他答案标记
         answer_patterns = [
-            r'答案[：:]\s*(.+)',
-            r'最终答案[：:]\s*(.+)',
-            r'Final answer[：:]\s*(.+)',
-            r'Answer[：:]\s*(.+)',
+            r"答案[：:]\s*(.+)",
+            r"最终答案[：:]\s*(.+)",
+            r"Final answer[：:]\s*(.+)",
+            r"Answer[：:]\s*(.+)",
         ]
 
         for pattern in answer_patterns:
@@ -278,10 +285,10 @@ class GAIAEvaluator:
                 return match.group(1).strip()
 
         # 如果没有找到标记，返回最后一个非空行
-        lines = response.strip().split('\n')
+        lines = response.strip().split("\n")
         for line in reversed(lines):
             line = line.strip()
-            if line and not line.startswith('#'):
+            if line and not line.startswith("#"):
                 return line
 
         return response.strip()
@@ -335,12 +342,14 @@ class GAIAEvaluator:
         answer = answer.strip()
 
         # 检查是否是逗号分隔的列表
-        if ',' in answer:
+        if "," in answer:
             # 分隔并标准化每个元素
-            parts = [self._normalize_single_answer(p.strip()) for p in answer.split(',')]
+            parts = [
+                self._normalize_single_answer(p.strip()) for p in answer.split(",")
+            ]
             # 按字母顺序排序（GAIA要求）
             parts.sort()
-            return ','.join(parts)
+            return ",".join(parts)
         else:
             return self._normalize_single_answer(answer)
 
@@ -349,24 +358,26 @@ class GAIAEvaluator:
         answer = answer.strip().lower()
 
         # 移除常见的冠词
-        articles = ['the', 'a', 'an']
+        articles = ["the", "a", "an"]
         words = answer.split()
         if words and words[0] in articles:
             words = words[1:]
-            answer = ' '.join(words)
+            answer = " ".join(words)
 
         # 移除货币符号和百分号
-        answer = answer.replace('$', '').replace('%', '').replace('€', '').replace('£', '')
+        answer = (
+            answer.replace("$", "").replace("%", "").replace("€", "").replace("£", "")
+        )
 
         # 移除数字中的逗号分隔符（如 1,000 -> 1000）
         # 但保留小数点
-        answer = re.sub(r'(\d),(\d)', r'\1\2', answer)
+        answer = re.sub(r"(\d),(\d)", r"\1\2", answer)
 
         # 移除多余空格
-        answer = ' '.join(answer.split())
+        answer = " ".join(answer.split())
 
         # 移除末尾的标点符号
-        answer = answer.rstrip('.,;:!?')
+        answer = answer.rstrip(".,;:!?")
 
         return answer
 
@@ -374,7 +385,7 @@ class GAIAEvaluator:
         self,
         results: Dict[str, Any],
         output_path: Union[str, Path],
-        include_reasoning: bool = True
+        include_reasoning: bool = True,
     ) -> None:
         """导出为GAIA官方格式
 
@@ -392,20 +403,19 @@ class GAIAEvaluator:
 
         detailed_results = results.get("detailed_results", [])
 
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             for result in detailed_results:
                 gaia_result = {
                     "task_id": result.get("task_id", ""),
-                    "model_answer": result.get("predicted", "")
+                    "model_answer": result.get("predicted", ""),
                 }
 
                 if include_reasoning:
                     gaia_result["reasoning_trace"] = result.get("response", "")
 
-                f.write(json.dumps(gaia_result, ensure_ascii=False) + '\n')
+                f.write(json.dumps(gaia_result, ensure_ascii=False) + "\n")
 
-        print(f"✅ GAIA格式结果已导出")
+        print("✅ GAIA格式结果已导出")
         print(f"   输出文件: {output_path}")
         print(f"   样本数: {len(detailed_results)}")
         print(f"   包含推理轨迹: {include_reasoning}")
-

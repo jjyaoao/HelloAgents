@@ -21,6 +21,7 @@ from enum import Enum
 
 class ProtocolType(Enum):
     """协议类型枚举"""
+
     MCP = "mcp"  # Model Context Protocol
     A2A = "a2a"  # Agent-to-Agent Protocol
     ANP = "anp"  # Agent Network Protocol
@@ -30,34 +31,33 @@ class ProtocolType(Enum):
 # 但标记为概念性，不建议实际使用
 class Protocol:
     """协议基类（概念性，不建议继承）
-    
+
     这个类定义了协议的基本概念，但实际实现不需要继承它。
     各协议根据自己的特点独立实现。
     """
-    
+
     def __init__(self, protocol_type: ProtocolType, version: str = "1.0.0"):
         """初始化协议
-        
+
         Args:
             protocol_type: 协议类型
             version: 协议版本
         """
         self._protocol_type = protocol_type
         self._version = version
-    
+
     @property
     def protocol_name(self) -> str:
         """获取协议名称"""
         return self._protocol_type.value
-    
+
     @property
     def version(self) -> str:
         """获取协议版本"""
         return self._version
-    
+
     def __str__(self) -> str:
         return f"{self.__class__.__name__}(protocol={self.protocol_name}, version={self.version})"
-    
+
     def __repr__(self) -> str:
         return self.__str__()
-

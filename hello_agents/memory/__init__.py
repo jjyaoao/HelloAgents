@@ -19,25 +19,51 @@ from .types.perceptual import PerceptualMemory
 # Storage Layer (存储层)
 from .storage.document_store import DocumentStore, SQLiteDocumentStore
 
+# Archive System (归档系统)
+from .archive import ArchiveManager, ArchivePolicy, ArchiveStatus, ColdStorage
+
+# Secure Wipe (安全清除)
+from .secure_wipe import (
+    SecureWipeManager,
+    GDPRComplianceHelper,
+    DecoyVectorGenerator,
+    CascadeDeleteTracker,
+    WipeRequest,
+    WipeResult,
+    WipeTargetType,
+    VerificationResult,
+)
+
 # Base classes and utilities
 from .base import MemoryItem, MemoryConfig, BaseMemory
 
 __all__ = [
     # Core Layer
     "MemoryManager",
-
     # Memory Types
     "WorkingMemory",
     "EpisodicMemory",
     "SemanticMemory",
     "PerceptualMemory",
-
     # Storage Layer
     "DocumentStore",
     "SQLiteDocumentStore",
-
+    # Archive System
+    "ArchiveManager",
+    "ArchivePolicy",
+    "ArchiveStatus",
+    "ColdStorage",
+    # Secure Wipe
+    "SecureWipeManager",
+    "GDPRComplianceHelper",
+    "DecoyVectorGenerator",
+    "CascadeDeleteTracker",
+    "WipeRequest",
+    "WipeResult",
+    "WipeTargetType",
+    "VerificationResult",
     # Base
     "MemoryItem",
     "MemoryConfig",
-    "BaseMemory"
+    "BaseMemory",
 ]

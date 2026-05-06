@@ -11,9 +11,11 @@ from .utils import create_context, parse_context
 # 服务器需要 fastmcp
 try:
     from .server import MCPServer
+
     MCP_SERVER_AVAILABLE = True
 except ImportError:
     MCP_SERVER_AVAILABLE = False
+
     class MCPServer:
         def __init__(self, *args, **kwargs):
             raise ImportError(
@@ -21,12 +23,15 @@ except ImportError:
                 "Install it with: pip install fastmcp"
             )
 
+
 # 客户端需要 mcp
 try:
     from .client import MCPClient
+
     MCP_CLIENT_AVAILABLE = True
 except ImportError:
     MCP_CLIENT_AVAILABLE = False
+
     class MCPClient:
         def __init__(self, *args, **kwargs):
             raise ImportError(
@@ -34,10 +39,10 @@ except ImportError:
                 "Install it with: pip install mcp"
             )
 
+
 __all__ = [
     "MCPClient",
     "MCPServer",
     "create_context",
     "parse_context",
 ]
-

@@ -6,7 +6,6 @@ GAIA (General AI Assistants) 评估工具
 
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
-import json
 from datetime import datetime
 from ..base import Tool, ToolParameter
 from hello_agents.evaluation.benchmarks.gaia.dataset import GAIADataset
@@ -16,17 +15,17 @@ from hello_agents.evaluation.benchmarks.gaia.metrics import GAIAMetrics
 
 class GAIAEvaluationTool(Tool):
     """GAIA评估工具
-    
+
     用于评估智能体的通用AI助手能力。
     支持三个难度级别：
     - Level 1: 简单任务（0步推理）
     - Level 2: 中等任务（1-5步推理）
     - Level 3: 困难任务（5+步推理）
     """
-    
+
     def __init__(self, local_data_path: Optional[str] = None):
         """初始化GAIA评估工具
-        
+
         Args:
             local_data_path: 本地数据路径（可选）
         """
@@ -35,13 +34,13 @@ class GAIAEvaluationTool(Tool):
             description=(
                 "评估智能体的通用AI助手能力。使用GAIA (General AI Assistants)基准测试。"
                 "支持三个难度级别：Level 1(简单)、Level 2(中等)、Level 3(困难)。"
-            )
+            ),
         )
         self.local_data_path = local_data_path
         self.dataset = None
         self.evaluator = None
         self.metrics_calculator = GAIAMetrics()
-    
+
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义"""
         return [
@@ -49,31 +48,31 @@ class GAIAEvaluationTool(Tool):
                 name="agent",
                 type="object",
                 description="要评估的智能体实例",
-                required=True
+                required=True,
             ),
             ToolParameter(
                 name="level",
                 type="integer",
                 description="难度级别：1(简单), 2(中等), 3(困难), None(全部)",
                 required=False,
-                default=None
+                default=None,
             ),
             ToolParameter(
                 name="max_samples",
                 type="integer",
                 description="最大评估样本数，None表示全部",
                 required=False,
-                default=None
+                default=None,
             ),
             ToolParameter(
                 name="local_data_dir",
                 type="string",
                 description="本地数据集目录路径",
                 required=False,
-                default=None
-            )
+                default=None,
+            ),
         ]
-    
+
     def run(
         self,
         agent: Any,
@@ -81,7 +80,7 @@ class GAIAEvaluationTool(Tool):
         max_samples: Optional[int] = None,
         local_data_dir: Optional[str] = None,
         export_results: bool = True,
-        generate_report: bool = True
+        generate_report: bool = True,
     ) -> Dict[str, Any]:
         """执行GAIA一键评估
 
@@ -101,7 +100,7 @@ class GAIAEvaluationTool(Tool):
         print("=" * 60)
 
         # 显示配置
-        print(f"\n配置:")
+        print("\n配置:")
         print(f"   智能体: {getattr(agent, 'name', 'Unknown')}")
         print(f"   难度级别: {level or '全部'}")
         print(f"   样本数量: {max_samples or '全部'}")
@@ -143,11 +142,12 @@ class GAIAEvaluationTool(Tool):
         except Exception as e:
             print(f"\n❌ 评估失败: {e}")
             import traceback
+
             traceback.print_exc()
             return {
                 "error": str(e),
                 "benchmark": "GAIA",
-                "agent_name": getattr(agent, 'name', 'Unknown')
+                "agent_name": getattr(agent, "name", "Unknown"),
             }
 
     def _run_evaluation(
@@ -155,13 +155,12 @@ class GAIAEvaluationTool(Tool):
         agent: Any,
         level: Optional[int],
         max_samples: Optional[int],
-        local_data_dir: Optional[str]
+        local_data_dir: Optional[str],
     ) -> Dict[str, Any]:
         """运行评估"""
         # 加载数据集
         self.dataset = GAIADataset(
-            level=level,
-            local_data_dir=local_data_dir or self.local_data_path
+            level=level, local_data_dir=local_data_dir or self.local_data_path
         )
         dataset_items = self.dataset.load()
 
@@ -172,7 +171,7 @@ class GAIAEvaluationTool(Tool):
         self.evaluator = GAIAEvaluator(
             dataset=self.dataset,
             level=level,
-            local_data_dir=local_data_dir or self.local_data_path
+            local_data_dir=local_data_dir or self.local_data_path,
         )
 
         # 运行评估
@@ -187,7 +186,7 @@ class GAIAEvaluationTool(Tool):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 生成文件名
-        agent_name = results.get("agent_name", "Unknown").replace("/", "_")
+        _ = results.get("agent_name", "Unknown").replace("/", "_")
         level = results.get("level_filter")
         level_str = f"_level{level}" if level else "_all"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -195,19 +194,14 @@ class GAIAEvaluationTool(Tool):
 
         # 导出JSONL结果
         self.evaluator.export_to_gaia_format(
-            results,
-            output_file,
-            include_reasoning=True
+            results, output_file, include_reasoning=True
         )
 
         # 生成提交说明文件
         self._generate_submission_guide(results, output_dir, output_file)
 
     def _generate_submission_guide(
-        self,
-        results: Dict[str, Any],
-        output_dir: Path,
-        result_file: Path
+        self, results: Dict[str, Any], output_dir: Path, result_file: Path
     ) -> None:
         """生成提交说明文件
 
@@ -228,7 +222,7 @@ class GAIAEvaluationTool(Tool):
 ## 📊 评估结果摘要
 
 - **模型名称**: {agent_name}
-- **评估级别**: {level or '全部'}
+- **评估级别**: {level or "全部"}
 - **总样本数**: {total_samples}
 - **精确匹配数**: {exact_matches}
 - **精确匹配率**: {exact_match_rate:.2%}
@@ -316,16 +310,17 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
 """
 
         # 保存提交说明
-        guide_file = output_dir / f"SUBMISSION_GUIDE_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        with open(guide_file, 'w', encoding='utf-8') as f:
+        guide_file = (
+            output_dir
+            / f"SUBMISSION_GUIDE_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        )
+        with open(guide_file, "w", encoding="utf-8") as f:
             f.write(guide_content)
 
         print(f"📄 提交说明已生成: {guide_file}")
 
     def generate_report(
-        self,
-        results: Dict[str, Any],
-        output_file: Optional[Union[str, Path]] = None
+        self, results: Dict[str, Any], output_file: Optional[Union[str, Path]] = None
     ) -> str:
         """生成评估报告
 
@@ -356,7 +351,7 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
 ## 📊 评估概览
 
 - **智能体**: {agent_name}
-- **难度级别**: {level or '全部'}
+- **难度级别**: {level or "全部"}
 - **总样本数**: {total_samples}
 - **精确匹配数**: {exact_matches}
 - **部分匹配数**: {partial_matches}
@@ -432,7 +427,7 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
             output_file = Path(output_file)
             output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             f.write(report)
 
         print(f"📄 报告已生成: {output_file}")
@@ -441,49 +436,47 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
 
     def get_dataset_info(self, level: Optional[int] = None) -> Dict[str, Any]:
         """获取数据集信息
-        
+
         Args:
             level: 难度级别
-            
+
         Returns:
             数据集信息字典
         """
         try:
             dataset = GAIADataset(level=level, local_data_path=self.local_data_path)
             items = dataset.load()
-            
+
             # 获取统计信息
             stats = dataset.get_statistics()
             level_dist = dataset.get_level_distribution()
-            
+
             return {
                 "level": level,
                 "total_samples": len(items),
                 "level_distribution": level_dist,
                 "statistics": stats,
                 "sample_keys": list(items[0].keys()) if items else [],
-                "levels_available": [1, 2, 3]
+                "levels_available": [1, 2, 3],
             }
         except Exception as e:
             return {"error": str(e)}
-    
+
     def validate_agent(self, agent: Any) -> bool:
         """验证智能体是否具备必要的接口
-        
+
         Args:
             agent: 要验证的智能体
-            
+
         Returns:
             是否有效
         """
         # 检查agent是否有run方法
-        if not hasattr(agent, 'run'):
+        if not hasattr(agent, "run"):
             return False
-        
-        # 检查run方法是否可调用
-        if not callable(getattr(agent, 'run')):
-            return False
-        
-        return True
-    
 
+        # 检查run方法是否可调用
+        if not callable(getattr(agent, "run")):
+            return False
+
+        return True

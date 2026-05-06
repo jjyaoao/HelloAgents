@@ -4,8 +4,7 @@ BFCL 评估指标模块
 计算 BFCL 相关的评估指标
 """
 
-from typing import Dict, Any, List, Optional
-import json
+from typing import Dict, Any, List
 import ast
 import numpy as np
 
@@ -36,7 +35,9 @@ class BFCLMetrics:
             return 0.0
 
         min_len = min(len(predictions), len(references))
-        correct = sum(1 for p, r in zip(predictions[:min_len], references[:min_len]) if p == r)
+        correct = sum(
+            1 for p, r in zip(predictions[:min_len], references[:min_len]) if p == r
+        )
         return correct / min_len
 
     @staticmethod
@@ -52,8 +53,8 @@ class BFCLMetrics:
         """
         try:
             # 尝试解析为AST
-            pred_ast = ast.parse(predicted, mode='eval')
-            exp_ast = ast.parse(expected, mode='eval')
+            pred_ast = ast.parse(predicted, mode="eval")
+            exp_ast = ast.parse(expected, mode="eval")
 
             # 比较AST结构
             pred_dump = ast.dump(pred_ast)
@@ -92,8 +93,7 @@ class BFCLMetrics:
 
     @staticmethod
     def calculate_parameter_accuracy(
-        predicted_params: Dict[str, Any],
-        expected_params: Dict[str, Any]
+        predicted_params: Dict[str, Any], expected_params: Dict[str, Any]
     ) -> float:
         """计算参数准确率
 
@@ -168,8 +168,12 @@ class BFCLMetrics:
         avg_score = sum(scores) / len(scores) if scores else 0.0
 
         # 执行时间统计
-        execution_times = [r.get("execution_time", 0.0) for r in results if "execution_time" in r]
-        avg_execution_time = sum(execution_times) / len(execution_times) if execution_times else 0.0
+        execution_times = [
+            r.get("execution_time", 0.0) for r in results if "execution_time" in r
+        ]
+        avg_execution_time = (
+            sum(execution_times) / len(execution_times) if execution_times else 0.0
+        )
 
         # 按类别统计
         category_metrics = self._compute_category_metrics(results)
@@ -185,7 +189,7 @@ class BFCLMetrics:
             "average_execution_time": avg_execution_time,
             "category_metrics": category_metrics,
             "function_call_stats": function_call_stats,
-            "score_distribution": self._compute_score_distribution(scores)
+            "score_distribution": self._compute_score_distribution(scores),
         }
 
     def _empty_metrics(self) -> Dict[str, Any]:
@@ -198,21 +202,19 @@ class BFCLMetrics:
             "average_execution_time": 0.0,
             "category_metrics": {},
             "function_call_stats": {},
-            "score_distribution": {}
+            "score_distribution": {},
         }
 
-    def _compute_category_metrics(self, results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    def _compute_category_metrics(
+        self, results: List[Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
         """计算分类别指标"""
         categories = {}
 
         for result in results:
             category = result.get("category", "unknown")
             if category not in categories:
-                categories[category] = {
-                    "total": 0,
-                    "success": 0,
-                    "scores": []
-                }
+                categories[category] = {"total": 0, "success": 0, "scores": []}
 
             categories[category]["total"] += 1
             if result.get("success", False):
@@ -223,18 +225,22 @@ class BFCLMetrics:
         category_metrics = {}
         for category, stats in categories.items():
             accuracy = stats["success"] / stats["total"] if stats["total"] > 0 else 0.0
-            avg_score = sum(stats["scores"]) / len(stats["scores"]) if stats["scores"] else 0.0
+            avg_score = (
+                sum(stats["scores"]) / len(stats["scores"]) if stats["scores"] else 0.0
+            )
 
             category_metrics[category] = {
                 "total": stats["total"],
                 "success": stats["success"],
                 "accuracy": accuracy,
-                "average_score": avg_score
+                "average_score": avg_score,
             }
 
         return category_metrics
 
-    def _compute_function_call_stats(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _compute_function_call_stats(
+        self, results: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """计算函数调用统计"""
         total_calls = 0
         successful_calls = 0
@@ -255,7 +261,7 @@ class BFCLMetrics:
             "successful_calls": successful_calls,
             "unique_functions": len(function_names),
             "function_names": sorted(list(function_names)),
-            "avg_calls_per_sample": total_calls / len(results) if results else 0.0
+            "avg_calls_per_sample": total_calls / len(results) if results else 0.0,
         }
 
     def _compute_score_distribution(self, scores: List[float]) -> Dict[str, Any]:
@@ -272,8 +278,8 @@ class BFCLMetrics:
             "quartiles": {
                 "q1": sorted(scores)[len(scores) // 4],
                 "q2": sorted(scores)[len(scores) // 2],
-                "q3": sorted(scores)[3 * len(scores) // 4]
-            }
+                "q3": sorted(scores)[3 * len(scores) // 4],
+            },
         }
 
     @staticmethod
@@ -293,8 +299,7 @@ class BFCLMetrics:
 
     @staticmethod
     def calculate_precision_recall(
-        predicted: List[Dict[str, Any]],
-        expected: List[Dict[str, Any]]
+        predicted: List[Dict[str, Any]], expected: List[Dict[str, Any]]
     ) -> tuple[float, float]:
         """计算精确率和召回率
 
@@ -312,8 +317,12 @@ class BFCLMetrics:
             return 0.0, 0.0
 
         # 简化版本：基于函数名匹配
-        pred_names = set(call.get("name", "") for call in predicted if isinstance(call, dict))
-        exp_names = set(call.get("name", "") for call in expected if isinstance(call, dict))
+        pred_names = set(
+            call.get("name", "") for call in predicted if isinstance(call, dict)
+        )
+        exp_names = set(
+            call.get("name", "") for call in expected if isinstance(call, dict)
+        )
 
         true_positives = len(pred_names & exp_names)
 
@@ -321,4 +330,3 @@ class BFCLMetrics:
         recall = true_positives / len(exp_names) if exp_names else 0.0
 
         return precision, recall
-

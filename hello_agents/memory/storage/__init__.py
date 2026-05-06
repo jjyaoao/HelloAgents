@@ -9,10 +9,11 @@
 from .qdrant_store import QdrantVectorStore, QdrantConnectionManager
 from .neo4j_store import Neo4jGraphStore
 from .document_store import DocumentStore, SQLiteDocumentStore
+
 __all__ = [
     "QdrantVectorStore",
     "QdrantConnectionManager",
     "Neo4jGraphStore",
     "DocumentStore",
-    "SQLiteDocumentStore"
+    "SQLiteDocumentStore",
 ]

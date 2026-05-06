@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from typing import Any, Callable, Optional
 
 from .simple_agent import SimpleAgent
-from ..core.message import Message
+from ..core.stream import StreamEvent
 from ..tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -146,9 +146,9 @@ class ToolAwareSimpleAgent(SimpleAgent):
                         in_string = False
 
                 if not in_string:
-                    if char == '[':
+                    if char == "[":
                         depth += 1
-                    elif char == ']':
+                    elif char == "]":
                         if depth == 0:
                             body = text[body_start:pos].strip()
                             original = text[begin : pos + 1]
@@ -204,9 +204,9 @@ class ToolAwareSimpleAgent(SimpleAgent):
                     in_string = False
 
             if not in_string:
-                if char == '[':
+                if char == "[":
                     depth += 1
-                elif char == ']':
+                elif char == "]":
                     if depth == 0:
                         return pos
                     depth -= 1
@@ -216,7 +216,9 @@ class ToolAwareSimpleAgent(SimpleAgent):
         return -1
 
     @staticmethod
-    def attach_registry(agent: "ToolAwareSimpleAgent", registry: ToolRegistry | None) -> None:
+    def attach_registry(
+        agent: "ToolAwareSimpleAgent", registry: ToolRegistry | None
+    ) -> None:
         """Helper to attach a tool registry if provided.
 
         Args:
@@ -259,7 +261,11 @@ class ToolAwareSimpleAgent(SimpleAgent):
                         sanitized[key] = parsed_tags
                         continue
                     if normalized:
-                        sanitized[key] = [item.strip() for item in normalized.split(",") if item.strip()]
+                        sanitized[key] = [
+                            item.strip()
+                            for item in normalized.split(",")
+                            if item.strip()
+                        ]
                         continue
 
                 if key in {"note_type", "action", "title", "content", "note_id"}:
@@ -293,30 +299,34 @@ class ToolAwareSimpleAgent(SimpleAgent):
         if trimmed and trimmed[0] in {'"', "'"} and trimmed[-1] == trimmed[0]:
             trimmed = trimmed[1:-1]
 
-        if trimmed and trimmed[0] in {'[', '('} and trimmed[-1] not in {']', ')'}:
-            closing = ']' if trimmed[0] == '[' else ')'
+        if trimmed and trimmed[0] in {"[", "("} and trimmed[-1] not in {"]", ")"}:
+            closing = "]" if trimmed[0] == "[" else ")"
             trimmed = f"{trimmed}{closing}"
 
         return trimmed.strip()
 
-    def stream_run(self, input_text: str, max_tool_iterations: int = 3, **kwargs: Any) -> Iterator[str]:  # type: ignore[override]
-        """Stream assistant output while supporting tool calls mid-generation.
-
-        流式运行智能体，支持在生成过程中调用工具。
+    def stream_run(
+        self, input_text: str, max_tool_iterations: int = 3, **kwargs: Any
+    ) -> Iterator[StreamEvent]:  # type: ignore[override]
+        """流式运行智能体，支持在生成过程中调用工具，输出 StreamEvent 事件。
 
         Args:
             input_text: 用户输入文本
             max_tool_iterations: 最大工具调用迭代次数
-            **kwargs: 传递给 LLM 的额外参数
+            **kwargs: 支持 conversation_id 参数
 
         Yields:
-            生成的文本片段
+            StreamEvent: 流式事件
         """
+        conversation_id = kwargs.pop("conversation_id", None)
+        yield StreamEvent.status("开始生成响应")
+
         messages: list[dict[str, Any]] = []
         enhanced_system_prompt = self._get_enhanced_system_prompt()
         messages.append({"role": "system", "content": enhanced_system_prompt})
 
-        for msg in self._history:
+        history = self._get_history_messages(conversation_id)
+        for msg in history:
             messages.append({"role": msg.role, "content": msg.content})
 
         messages.append({"role": "user", "content": input_text})
@@ -337,7 +347,11 @@ class ToolAwareSimpleAgent(SimpleAgent):
                 while True:
                     start = residual.find(marker)
                     if start == -1:
-                        safe_len = len(residual) if final_pass else max(0, len(residual) - (len(marker) - 1))
+                        safe_len = (
+                            len(residual)
+                            if final_pass
+                            else max(0, len(residual) - (len(marker) - 1))
+                        )
                         if safe_len > 0:
                             segment = residual[:safe_len]
                             residual = residual[safe_len:]
@@ -369,14 +383,14 @@ class ToolAwareSimpleAgent(SimpleAgent):
                         continue
                     segments_this_round.append(segment)
                     final_segments.append(segment)
-                    yield segment
+                    yield StreamEvent.text(segment)
 
             for segment in process_residual(final_pass=True):
                 if not segment:
                     continue
                 segments_this_round.append(segment)
                 final_segments.append(segment)
-                yield segment
+                yield StreamEvent.text(segment)
 
             clean_response = "".join(segments_this_round)
             tool_calls: list[dict[str, Any]] = []
@@ -385,12 +399,20 @@ class ToolAwareSimpleAgent(SimpleAgent):
                 tool_calls.extend(self._parse_tool_calls(call_text))
 
             if tool_calls:
+                yield StreamEvent.status(f"正在调用 {len(tool_calls)} 个工具...")
+
+                for call in tool_calls:
+                    yield StreamEvent.tool_call(call["tool_name"], call["parameters"])
+
                 messages.append({"role": "assistant", "content": clean_response})
 
                 tool_results = []
                 for call in tool_calls:
-                    result = self._execute_tool_call(call["tool_name"], call["parameters"])
+                    result = self._execute_tool_call(
+                        call["tool_name"], call["parameters"]
+                    )
                     tool_results.append(result)
+                    yield StreamEvent.tool_result(call["tool_name"], result)
 
                 tool_results_text = "\n\n".join(tool_results)
                 messages.append(
@@ -414,12 +436,12 @@ class ToolAwareSimpleAgent(SimpleAgent):
             fallback_response = self.llm.invoke(messages, **kwargs)
             final_segments.append(fallback_response)
             final_response_text = fallback_response
-            yield fallback_response
+            yield StreamEvent.text(fallback_response)
 
         stored_response = final_response_text or "".join(final_segments)
 
-        self.add_message(Message(input_text, "user"))
-        self.add_message(Message(stored_response, "assistant"))
+        self._save_conversation_messages(input_text, stored_response, conversation_id)
+        yield StreamEvent.done(stored_response)
 
     @staticmethod
     def _coerce_sequence(value: str) -> Any:
@@ -450,4 +472,3 @@ class ToolAwareSimpleAgent(SimpleAgent):
                     return parsed
 
         return None
-

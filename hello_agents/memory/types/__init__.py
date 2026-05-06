@@ -18,10 +18,9 @@ __all__ = [
     "EpisodicMemory",
     "SemanticMemory",
     "PerceptualMemory",
-
     # 辅助类
     "Episode",
     "Entity",
     "Relation",
-    "Perception"
+    "Perception",
 ]
