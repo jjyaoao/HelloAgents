@@ -106,13 +106,21 @@ class SkillTool(Tool):
                 )
 
             # 替换 $ARGUMENTS 占位符
-            content = skill.body.replace("$ARGUMENTS", args)
+            # 安全：清理 args 中可能伪造 <skill-loaded> 边界的标记，
+            # 防止用户/上游输入越权关闭技能上下文并注入伪造的"已加载技能"。
+            safe_args = (
+                str(args)
+                .replace("</skill-loaded>", "</skill-loaded\u200b>")
+                .replace("<skill-loaded", "<skill-loaded\u200b")
+            )
+            content = skill.body.replace("$ARGUMENTS", safe_args)
 
             # 列出可用资源
             resources_hint = self._get_resources_hint(skill)
 
             # 构造完整技能内容（缓存友好的注入方式）
-            full_content = f"""<skill-loaded name="{skill_name}">
+            safe_skill_name = str(skill_name).replace('"', "&quot;").replace(">", "&gt;").replace("<", "&lt;")
+            full_content = f"""<skill-loaded name="{safe_skill_name}">
 {content}
 {resources_hint}
 </skill-loaded>
