@@ -11,6 +11,17 @@ from typing import Dict, Any, List, Optional
 from ..base import Tool, ToolParameter
 import os
 
+import gc
+import asyncio
+import sys
+if sys.platform == "win32":
+    # 使用 SelectorEventLoop 替代 ProactorEventLoop，
+    # 可避免 GetQueuedCompletionStatus 阻塞问题
+    if sys.version_info >= (3, 8):
+        asyncio.set_event_loop_policy(
+            asyncio.WindowsSelectorEventLoopPolicy()
+        )
+        
 
 # MCP服务器环境变量映射表
 # 用于自动检测常见MCP服务器需要的环境变量
@@ -354,6 +365,7 @@ class MCPTool(Tool):
             操作结果
         """
         from hello_agents.protocols.mcp.client import MCPClient
+        timeout = getattr(self, 'timeout', 10)
 
         # 智能推断action：如果没有action但有tool_name，自动设置为call_tool
         action = parameters.get("action", "").lower()
@@ -393,7 +405,7 @@ class MCPTool(Tool):
                         arguments = parameters.get("arguments", {})
                         if not tool_name:
                             return "错误：必须指定 tool_name 参数"
-                        result = await client.call_tool(tool_name, arguments)
+                        result = await asyncio.wait_for(client.call_tool(tool_name, arguments), timeout=timeout)
                         return f"工具 '{tool_name}' 执行结果:\n{result}"
 
                     elif action == "list_resources":
@@ -451,17 +463,31 @@ class MCPTool(Tool):
                         try:
                             return new_loop.run_until_complete(run_mcp_operation())
                         finally:
+                            # 取消所有残留任务，防止 transport 未关闭
+                            pending = asyncio.all_tasks(new_loop)
+                            for task in pending:
+                                task.cancel()
+                            if pending:
+                                new_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                             new_loop.close()
 
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    try:
                         future = executor.submit(run_in_thread)
-                        return future.result()
+                        # 设置超时，避免永久阻塞
+                        return future.result(timeout=timeout)
+                    finally:
+                        # 不等待残留线程，直接关闭线程池
+                        executor.shutdown(wait=False, cancel_futures=True)
                 except RuntimeError:
                     # 没有运行中的循环，直接运行
                     return asyncio.run(run_mcp_operation())
             except Exception as e:
                 return f"异步操作失败: {str(e)}"
-                    
+            finally:
+                # 强制回收未关闭的管道/文件描述符
+                gc.collect()
+
         except Exception as e:
             return f"MCP 操作失败: {str(e)}"
     
