@@ -129,7 +129,8 @@ class MCPTool(Tool):
 
         super().__init__(
             name=name,
-            description=description
+            description=description,
+            expandable=auto_expand
         )
 
     def _prepare_env(self,
