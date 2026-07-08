@@ -4,7 +4,7 @@
 """
 
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv,find_dotenv
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 import logging
@@ -12,8 +12,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Load environment variables early so DB configs pick them up
-load_dotenv()
-
+env_path=find_dotenv(usecwd=True)
+load_dotenv(env_path)
 
 class QdrantConfig(BaseModel):
     """Qdrant向量数据库配置"""
