@@ -6,6 +6,7 @@ from .base import Tool
 from .response import ToolResponse, ToolStatus
 from .errors import ToolErrorCode
 from .circuit_breaker import CircuitBreaker
+from .interceptor import ToolInterceptor, AlwaysAllowInterceptor
 
 class ToolRegistry:
     """
@@ -15,9 +16,14 @@ class ToolRegistry:
     支持两种工具注册方式：
     1. Tool对象注册（推荐）
     2. 函数直接注册（简便）
+
+    支持工具调用拦截器（Human-in-the-loop）：
+    - 在工具执行前插入确认环节
+    - 通过 set_interceptor() 设置拦截策略
     """
 
-    def __init__(self, circuit_breaker: Optional[CircuitBreaker] = None):
+    def __init__(self, circuit_breaker: Optional[CircuitBreaker] = None,
+                 interceptor: Optional[ToolInterceptor] = None):
         self._tools: dict[str, Tool] = {}
         self._functions: dict[str, dict[str, Any]] = {}
 
@@ -26,6 +32,20 @@ class ToolRegistry:
 
         # 熔断器（默认启用）
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
+
+        # 工具调用拦截器（默认始终放行，向后兼容）
+        self.interceptor: ToolInterceptor = interceptor or AlwaysAllowInterceptor()
+
+    def set_interceptor(self, interceptor: ToolInterceptor):
+        """设置工具调用拦截器
+
+        Args:
+            interceptor: ToolInterceptor 实例
+
+        Example:
+            >>> registry.set_interceptor(ConsoleConfirmInterceptor(whitelist={"ReadTool"}))
+        """
+        self.interceptor = interceptor
 
     def register_tool(self, tool: Tool, auto_expand: bool = True):
         """
@@ -152,7 +172,96 @@ class ToolRegistry:
                 }
             )
 
+        # 检查拦截器（Human-in-the-loop）
+        import json as _json
+        params_for_intercept = input_text
+        if isinstance(input_text, str):
+            try:
+                params_for_intercept = _json.loads(input_text)
+            except _json.JSONDecodeError:
+                params_for_intercept = {"input": input_text}
+        elif isinstance(input_text, dict):
+            params_for_intercept = input_text
+        else:
+            params_for_intercept = {"input": str(input_text)}
+
+        interceptor_result = self.interceptor.intercept(
+            tool_name=name,
+            parameters=params_for_intercept,
+            context={"tool_registry": type(self).__name__}
+        )
+        if interceptor_result.is_denied:
+            return ToolResponse.error(
+                code=ToolErrorCode.PERMISSION_DENIED,
+                message=f"工具 '{name}' 被拦截器拒绝: {interceptor_result.reason}",
+                context={"tool_name": name, "interceptor_reason": interceptor_result.reason}
+            )
+
         # 执行工具
+        return self._execute_tool_internal(name, input_text)
+
+    async def aexecute_tool(self, name: str, input_text: str) -> ToolResponse:
+        """
+        异步执行工具，返回 ToolResponse 对象（带熔断器 + 拦截器保护）
+
+        与 execute_tool() 功能相同，但使用异步拦截器。
+        适用于 async Agent（如 ReActAgent.arun()）。
+
+        Args:
+            name: 工具名称
+            input_text: 输入参数
+
+        Returns:
+            ToolResponse: 标准化的工具响应对象
+        """
+        # 检查熔断器
+        if self.circuit_breaker.is_open(name):
+            status = self.circuit_breaker.get_status(name)
+            return ToolResponse.error(
+                code=ToolErrorCode.CIRCUIT_OPEN,
+                message=f"工具 '{name}' 当前被禁用，由于连续失败。{status['recover_in_seconds']} 秒后可用。",
+                context={
+                    "tool_name": name,
+                    "circuit_status": status
+                }
+            )
+
+        # 检查拦截器（异步版本 - Human-in-the-loop）
+        import json as _json
+        params_for_intercept = input_text
+        if isinstance(input_text, str):
+            try:
+                params_for_intercept = _json.loads(input_text)
+            except _json.JSONDecodeError:
+                params_for_intercept = {"input": input_text}
+        elif isinstance(input_text, dict):
+            params_for_intercept = input_text
+        else:
+            params_for_intercept = {"input": str(input_text)}
+
+        interceptor_result = await self.interceptor.aintercept(
+            tool_name=name,
+            parameters=params_for_intercept,
+            context={"tool_registry": type(self).__name__}
+        )
+        if interceptor_result.is_denied:
+            return ToolResponse.error(
+                code=ToolErrorCode.PERMISSION_DENIED,
+                message=f"工具 '{name}' 被拦截器拒绝: {interceptor_result.reason}",
+                context={"tool_name": name, "interceptor_reason": interceptor_result.reason}
+            )
+
+        # 执行工具（与同步版本相同逻辑）
+        return self._execute_tool_internal(name, input_text)
+
+    def _execute_tool_internal(self, name: str, input_text: str) -> ToolResponse:
+        """内部工具执行逻辑（供 execute_tool 和 aexecute_tool 共用）
+
+        在熔断器和拦截器检查通过后调用。
+        """
+        import json
+        import time as time_module
+
         response = None
 
         # 优先查找Tool对象（新协议）
@@ -160,7 +269,6 @@ class ToolRegistry:
             tool = self._tools[name]
             try:
                 # 解析参数（支持 JSON 字符串或字典）
-                import json
                 if isinstance(input_text, str):
                     try:
                         parameters = json.loads(input_text)
@@ -184,11 +292,11 @@ class ToolRegistry:
         # 查找函数工具（自动包装为新协议）
         elif name in self._functions:
             func = self._functions[name]["func"]
-            start_time = time.time()
+            start_time = time_module.time()
 
             try:
                 result = func(input_text)
-                elapsed_ms = int((time.time() - start_time) * 1000)
+                elapsed_ms = int((time_module.time() - start_time) * 1000)
 
                 # 包装为 ToolResponse
                 response = ToolResponse.success(
@@ -198,7 +306,7 @@ class ToolRegistry:
                     context={"tool_name": name, "input": input_text}
                 )
             except Exception as e:
-                elapsed_ms = int((time.time() - start_time) * 1000)
+                elapsed_ms = int((time_module.time() - start_time) * 1000)
                 response = ToolResponse.error(
                     code=ToolErrorCode.EXECUTION_ERROR,
                     message=f"函数执行失败: {str(e)}",

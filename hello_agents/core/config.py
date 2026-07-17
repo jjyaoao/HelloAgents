@@ -49,6 +49,11 @@ class Config(BaseModel):
     skills_dir: str = "skills"  # Skills 目录路径
     skills_auto_register: bool = True  # 是否自动注册 SkillTool
 
+    # 工具调用拦截器配置（Human-in-the-loop）
+    tool_interceptor_enabled: bool = False  # 是否启用工具调用拦截
+    tool_interceptor_whitelist: str = ""  # 拦截器白名单工具（逗号分隔），为空则不使用白名单
+    tool_interceptor_default_deny: bool = False  # 无拦截器时默认行为：False=放行, True=拒绝
+
     # 熔断器配置
     circuit_enabled: bool = True  # 是否启用熔断器
     circuit_failure_threshold: int = 3  # 连续失败多少次后熔断

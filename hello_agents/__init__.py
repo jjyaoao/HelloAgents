@@ -30,6 +30,17 @@ from .agents.plan_solve_agent import PlanSolveAgent
 from .tools.registry import ToolRegistry, global_registry
 from .tools.builtin.calculator import CalculatorTool, calculate
 
+# 工具调用拦截器
+from .tools.interceptor import (
+    InterceptorDecision,
+    InterceptorResult,
+    ToolInterceptor,
+    AlwaysAllowInterceptor,
+    ConsoleConfirmInterceptor,
+    CallbackInterceptor,
+    SessionConfirmInterceptor,
+)
+
 __all__ = [
     # 版本信息
     "__version__",
@@ -54,5 +65,14 @@ __all__ = [
     "global_registry",
     "CalculatorTool",
     "calculate",
+
+    # 工具调用拦截器
+    "InterceptorDecision",
+    "InterceptorResult",
+    "ToolInterceptor",
+    "AlwaysAllowInterceptor",
+    "ConsoleConfirmInterceptor",
+    "CallbackInterceptor",
+    "SessionConfirmInterceptor",
 ]
 
