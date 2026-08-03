@@ -481,7 +481,7 @@ def index_chunks(
     store = None, 
     chunks: List[Dict] = None, 
     cache_db: Optional[str] = None, 
-    batch_size: int = 64,
+    batch_size: int = 10,
     rag_namespace: str = "default"
 ) -> None:
     """
@@ -575,7 +575,13 @@ def index_chunks(
                     
                     small_vecs = embedder.encode(small_part)
                     # Normalize to List[List[float]]
-                    if isinstance(small_vecs, list) and small_vecs and not isinstance(small_vecs[0], list):
+                    if not isinstance(small_vecs, list):
+                        if hasattr(small_vecs, "tolist"):
+                            small_vecs = small_vecs.tolist()
+                        else:
+                            small_vecs = [small_vecs]
+                    elif small_vecs and isinstance(small_vecs[0], (int, float)):
+                        # 单个向量（扁平浮点列表），包装为单元素列表
                         small_vecs = [small_vecs]
                     
                     for v in small_vecs:
