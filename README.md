@@ -76,7 +76,7 @@ print(f"检测到的provider: {llm.provider}")
 
 | 提供商类型   | 示例服务                               | 配置示例                             |
 | ------------ | -------------------------------------- | ------------------------------------ |
-| **云端 API** | OpenAI、DeepSeek、Qwen、Kimi、智谱 GLM | `LLM_BASE_URL=api.deepseek.com`      |
+| **云端 API** | OpenAI、DeepSeek、Qwen、Kimi、智谱 GLM、Novita | `LLM_BASE_URL=api.deepseek.com`      |
 | **本地推理** | vLLM、Ollama、SGLang                   | `LLM_BASE_URL=http://localhost:8000` |
 | **其他兼容** | 任何 OpenAI 格式接口                   | `LLM_BASE_URL=your-endpoint`         |
 
