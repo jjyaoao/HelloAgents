@@ -85,6 +85,7 @@ class RLTrainingTool(Tool):
                 - output_dir: 输出目录（默认: "./output"）
                 - use_lora: 是否使用LoRA（默认: True）
                 - batch_size: 批次大小（默认: 4）
+                - learning_rate: 学习率（默认由 TrainingConfig 决定；GRPO 建议 1e-6）
 
                 数据集加载参数 (action="load_dataset"):
                 - format: 数据格式 ("sft", "rl")
@@ -148,6 +149,7 @@ class RLTrainingTool(Tool):
         output_dir = parameters.get("output_dir", "./output")
         use_lora = parameters.get("use_lora", True)
         batch_size = parameters.get("batch_size", 4)
+        learning_rate = parameters.get("learning_rate", None)
 
         # 支持自定义数据集
         custom_dataset = parameters.get("custom_dataset", None)
@@ -193,6 +195,7 @@ class RLTrainingTool(Tool):
                 output_dir=output_dir,
                 use_lora=use_lora,
                 batch_size=batch_size,
+                learning_rate=learning_rate,
                 custom_dataset=custom_dataset,
                 use_wandb=use_wandb,
                 use_tensorboard=use_tensorboard,
@@ -207,6 +210,7 @@ class RLTrainingTool(Tool):
                 output_dir=output_dir,
                 use_lora=use_lora,
                 batch_size=batch_size,
+                learning_rate=learning_rate,
                 custom_dataset=custom_dataset,
                 custom_reward=custom_reward,
                 use_wandb=use_wandb,
@@ -424,6 +428,7 @@ class RLTrainingTool(Tool):
         output_dir: str,
         use_lora: bool,
         batch_size: int,
+        learning_rate: Optional[float] = None,
         custom_dataset = None,
         use_wandb: bool = False,
         use_tensorboard: bool = True,
@@ -438,7 +443,7 @@ class RLTrainingTool(Tool):
         )
 
         # 创建配置
-        config = TrainingConfig(
+        config_kwargs = dict(
             model_name=model_name,
             output_dir=output_dir,
             num_train_epochs=num_epochs,
@@ -446,8 +451,11 @@ class RLTrainingTool(Tool):
             use_lora=use_lora,
             use_wandb=use_wandb,
             use_tensorboard=use_tensorboard,
-            wandb_project=wandb_project
+            wandb_project=wandb_project,
         )
+        if learning_rate is not None:
+            config_kwargs["learning_rate"] = learning_rate
+        config = TrainingConfig(**config_kwargs)
 
         # 设置环境
         setup_training_environment(config)
@@ -492,6 +500,7 @@ class RLTrainingTool(Tool):
         output_dir: str,
         use_lora: bool,
         batch_size: int,
+        learning_rate: Optional[float] = None,
         custom_dataset = None,
         custom_reward = None,
         use_wandb: bool = False,
@@ -508,7 +517,7 @@ class RLTrainingTool(Tool):
         )
 
         # 创建配置
-        config = TrainingConfig(
+        config_kwargs = dict(
             model_name=model_name,
             output_dir=output_dir,
             num_train_epochs=num_epochs,
@@ -516,8 +525,11 @@ class RLTrainingTool(Tool):
             use_lora=use_lora,
             use_wandb=use_wandb,
             use_tensorboard=use_tensorboard,
-            wandb_project=wandb_project
+            wandb_project=wandb_project,
         )
+        if learning_rate is not None:
+            config_kwargs["learning_rate"] = learning_rate
+        config = TrainingConfig(**config_kwargs)
 
         # 设置环境
         setup_training_environment(config)
@@ -656,6 +668,13 @@ class RLTrainingTool(Tool):
                 description="批次大小 (仅train)",
                 required=False,
                 default=4
+            ),
+            ToolParameter(
+                name="learning_rate",
+                type="float",
+                description="学习率 (仅train)；GRPO 建议 1e-6，避免策略坍塌",
+                required=False,
+                default=None
             ),
         ]
 

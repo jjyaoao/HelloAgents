@@ -20,6 +20,11 @@ class TrainingConfig:
     per_device_train_batch_size: int = 4
     gradient_accumulation_steps: int = 4
     learning_rate: float = 5e-5
+    # GRPO 专用默认学习率：直接复用 SFT 的 5e-5 会在小模型 + GSM8K 上导致策略坍塌
+    # （Qwen3-0.6B 实测：57.0% → 2.4%），1e-6 可稳定收敛；
+    # 用户显式传入 learning_rate 时，GRPO 仍以显式值为准。
+    grpo_learning_rate: Optional[float] = 1e-6
+    kl_beta: float = 0.001
     warmup_steps: int = 100
     logging_steps: int = 10
     save_steps: int = 500

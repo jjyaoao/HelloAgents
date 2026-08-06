@@ -310,12 +310,20 @@ class GRPOTrainerWrapper(BaseTrainerWrapper):
             report_to = ["none"]
 
         # 配置训练参数
+        # GRPO 使用专用默认学习率，避免复用 SFT 的 5e-5 导致策略坍塌；
+        # 用户显式指定 learning_rate 时以显式值为准
+        grpo_learning_rate = (
+            self.config.grpo_learning_rate
+            if self.config.grpo_learning_rate is not None
+            else self.config.learning_rate
+        )
         training_args = GRPOConfig(
             output_dir=self.config.output_dir,
             num_train_epochs=self.config.num_train_epochs,
             per_device_train_batch_size=self.config.per_device_train_batch_size,
             gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-            learning_rate=self.config.learning_rate,
+            learning_rate=grpo_learning_rate,
+            beta=self.config.kl_beta,  # KL 惩罚系数，避免 TRL 默认 0.04 带来的过度惩罚
             warmup_steps=self.config.warmup_steps,
             logging_steps=self.config.logging_steps,
             save_steps=self.config.save_steps,
