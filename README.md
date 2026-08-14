@@ -25,6 +25,9 @@ HelloAgents 是一个基于 OpenAI 原生 API 构建的生产级多智能体框�
 - **🐹 Golang 开发版本**：[HelloAgents-go](https://github.com/chaojixinren/HelloAgents-go)
   社区贡献的HelloAgents 的 Go 语言重实现版本，适合 Go 语言开发者使用。
 
+- **🔷 TypeScript 开发版本**：[HelloAgents-ts](https://github.com/JunLang-7/HelloAgents-ts)
+  社区贡献的HelloAgents 的 TypeScript 语言重实现版本，适合 TypeScript 语言开发者使用。
+
 ## 🚀 快速开始
 
 ### 安装
