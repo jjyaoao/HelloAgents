@@ -8,6 +8,17 @@ from .exceptions import HelloAgentsException
 from .llm_response import LLMResponse, StreamStats, LLMToolResponse
 from .llm_adapters import create_adapter, BaseLLMAdapter
 
+_ATLAS_BASE_URL = "https://api.atlascloud.ai/v1"
+_ATLAS_MODEL = "deepseek-ai/deepseek-v4-pro"
+
+
+def _first_env(*names: str) -> Optional[str]:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
 
 class HelloAgentsLLM:
     """
@@ -49,9 +60,31 @@ class HelloAgentsLLM:
             timeout: 超时时间（秒），默认从 LLM_TIMEOUT 读取，默认60秒
         """
         # 加载配置
+        generic_api_key = os.getenv("LLM_API_KEY")
+        atlas_api_key = _first_env("ATLASCLOUD_API_KEY", "ATLAS_CLOUD_API_KEY")
+        uses_atlas_fallback = (
+            not api_key and not generic_api_key and bool(atlas_api_key)
+        )
+
         self.model = model or os.getenv("LLM_MODEL_ID")
-        self.api_key = api_key or os.getenv("LLM_API_KEY")
+        self.api_key = api_key or generic_api_key or atlas_api_key
         self.base_url = base_url or os.getenv("LLM_BASE_URL")
+        if uses_atlas_fallback:
+            self.model = (
+                self.model
+                or _first_env("ATLASCLOUD_MODEL", "ATLAS_CLOUD_MODEL")
+                or _ATLAS_MODEL
+            )
+            self.base_url = (
+                self.base_url
+                or _first_env(
+                    "ATLASCLOUD_BASE_URL",
+                    "ATLAS_CLOUD_BASE_URL",
+                    "ATLASCLOUD_API_BASE",
+                    "ATLAS_CLOUD_API_BASE",
+                )
+                or _ATLAS_BASE_URL
+            )
         self.timeout = timeout or int(os.getenv("LLM_TIMEOUT", "60"))
 
         self.temperature = temperature
