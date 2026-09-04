@@ -6,7 +6,7 @@ from hello_agents import (
     SimpleAgent, 
     ReActAgent, 
     ReflectionAgent, 
-    PlanAndSolveAgent,
+    PlanSolveAgent,
     HelloAgentsLLM, 
     ToolRegistry
 )
@@ -173,7 +173,7 @@ class TestPlanAndSolveAgentUsage:
     def test_basic_planning(self):
         """场景1: 基础规划"""
         llm = HelloAgentsLLM()
-        agent = PlanAndSolveAgent(
+        agent = PlanSolveAgent(
             name="规划助手",
             llm=llm
         )
@@ -191,7 +191,7 @@ class TestPlanAndSolveAgentUsage:
         registry = ToolRegistry()
         registry.register_tool(CalculatorTool())
 
-        agent = PlanAndSolveAgent(
+        agent = PlanSolveAgent(
             name="数学规划助手",
             llm=llm,
             tool_registry=registry,
@@ -224,7 +224,7 @@ class TestAgentComparison:
         print(f"\n[ReflectionAgent] {result2[:100]}...")
 
         # PlanAndSolveAgent
-        plan = PlanAndSolveAgent("规划助手", llm)
+        plan = PlanSolveAgent("规划助手", llm)
         result3 = plan.run(task)
         print(f"\n[PlanAndSolveAgent] {result3[:100]}...")
 
