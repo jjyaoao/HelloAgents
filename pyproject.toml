@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 gemini = ["google-genai>=1.0.0"]
 anthropic = ["anthropic>=0.20.0"]
+litellm = ["litellm>=1.89.0,<2.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/jjyaoao/HelloAgents"

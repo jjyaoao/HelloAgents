@@ -30,6 +30,7 @@ class HelloAgentsLLM:
         model: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        provider: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         timeout: Optional[int] = None,
@@ -44,6 +45,8 @@ class HelloAgentsLLM:
             model: 模型名称，默认从 LLM_MODEL_ID 读取
             api_key: API密钥，默认从 LLM_API_KEY 读取
             base_url: 服务地址，默认从 LLM_BASE_URL 读取
+            provider: explicit adapter selection (openai/anthropic/gemini/litellm),
+                defaults to LLM_PROVIDER env; when empty, auto-detected from base_url
             temperature: 温度参数，默认0.7
             max_tokens: 最大token数
             timeout: 超时时间（秒），默认从 LLM_TIMEOUT 读取，默认60秒
@@ -52,26 +55,32 @@ class HelloAgentsLLM:
         self.model = model or os.getenv("LLM_MODEL_ID")
         self.api_key = api_key or os.getenv("LLM_API_KEY")
         self.base_url = base_url or os.getenv("LLM_BASE_URL")
+        self.provider = provider or os.getenv("LLM_PROVIDER")
         self.timeout = timeout or int(os.getenv("LLM_TIMEOUT", "60"))
 
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.kwargs = kwargs
 
+        # LiteLLM routes by model prefix + provider env vars, so api_key/base_url
+        # are optional on that path (e.g. anthropic/claude-... with ANTHROPIC_API_KEY).
+        is_litellm = (self.provider or "").lower() == "litellm"
+
         # 验证必要参数
         if not self.model:
             raise HelloAgentsException("必须提供模型名称（model参数或LLM_MODEL_ID环境变量）")
-        if not self.api_key:
+        if not self.api_key and not is_litellm:
             raise HelloAgentsException("必须提供API密钥（api_key参数或LLM_API_KEY环境变量）")
-        if not self.base_url:
+        if not self.base_url and not is_litellm:
             raise HelloAgentsException("必须提供服务地址（base_url参数或LLM_BASE_URL环境变量）")
 
-        # 创建适配器（自动检测）
+        # Create adapter (explicit provider wins, else auto-detect from base_url)
         self._adapter: BaseLLMAdapter = create_adapter(
             api_key=self.api_key,
             base_url=self.base_url,
             timeout=self.timeout,
-            model=self.model
+            model=self.model,
+            provider=self.provider
         )
 
         # 最后一次调用的统计信息（用于流式调用）
