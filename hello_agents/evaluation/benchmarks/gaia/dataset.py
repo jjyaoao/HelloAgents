@@ -156,33 +156,43 @@ class GAIADataset:
                 print("   2. HF_TOKEN正确且有效")
                 return []
 
-            # 读取metadata.jsonl文件
-            metadata_file = local_dir / "2023" / self.split / "metadata.jsonl"
-            if not metadata_file.exists():
-                print(f"   ⚠️ 未找到metadata文件: {metadata_file}")
+            # GAIA旧版使用JSONL；当前版本使用Parquet。
+            metadata_jsonl = local_dir / "2023" / self.split / "metadata.jsonl"
+            metadata_parquet = local_dir / "2023" / self.split / "metadata.parquet"
+
+            if metadata_parquet.exists():
+                try:
+                    import pandas as pd
+                except ImportError:
+                    print("   ⚠️ 读取GAIA Parquet数据需要安装pandas")
+                    print("   提示: pip install hello-agents[evaluation]")
+                    return []
+
+                raw_items = pd.read_parquet(metadata_parquet).to_dict(orient="records")
+            elif metadata_jsonl.exists():
+                with open(metadata_jsonl, "r", encoding="utf-8") as f:
+                    raw_items = [json.loads(line) for line in f if line.strip()]
+            else:
+                print(
+                    "   ⚠️ 未找到metadata文件: "
+                    f"{metadata_jsonl} 或 {metadata_parquet}"
+                )
                 return []
 
             # 加载数据
             data = []
-            with open(metadata_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
+            for item in raw_items:
+                # 跳过占位符
+                if item.get("task_id") == "0-0-0-0-0":
+                    continue
 
-                    item = json.loads(line)
+                # 调整文件路径
+                if item.get("file_name"):
+                    item["file_name"] = str(local_dir / "2023" / self.split / item["file_name"])
 
-                    # 跳过占位符
-                    if item.get("task_id") == "0-0-0-0-0":
-                        continue
-
-                    # 调整文件路径
-                    if item.get("file_name"):
-                        item["file_name"] = str(local_dir / "2023" / self.split / item["file_name"])
-
-                    # 标准化并添加
-                    standardized_item = self._standardize_item(item)
-                    data.append(standardized_item)
+                # 标准化并添加
+                standardized_item = self._standardize_item(item)
+                data.append(standardized_item)
 
             print(f"   ✓ 加载了 {len(data)} 个样本")
             return data
@@ -199,11 +209,18 @@ class GAIADataset:
 
     def _standardize_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """标准化数据项格式"""
+        # 当前GAIA Parquet将Level存为字符串；统一为整数以便按级别过滤。
+        raw_level = item.get("Level", item.get("level", 1))
+        try:
+            level = int(raw_level)
+        except (TypeError, ValueError):
+            level = raw_level
+
         # GAIA数据集的标准字段
         standardized = {
             "task_id": item.get("task_id", ""),
             "question": item.get("Question", item.get("question", "")),
-            "level": item.get("Level", item.get("level", 1)),
+            "level": level,
             "final_answer": item.get("Final answer", item.get("final_answer", "")),
             "file_name": item.get("file_name", ""),
             "file_path": item.get("file_path", ""),
