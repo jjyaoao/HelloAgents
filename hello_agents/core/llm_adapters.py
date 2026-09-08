@@ -109,6 +109,28 @@ class OpenAIAdapter(BaseLLMAdapter):
             base_url=self.base_url,
             timeout=self.timeout
         )
+
+    def _normalize_thinking_kwargs(self, kwargs: Dict[str, Any], *, non_streaming: bool) -> Dict[str, Any]:
+        normalized = dict(kwargs)
+        
+        enable_thinking = normalized.pop("enable_thinking", None)
+        extra_body = normalized.get("extra_body")
+        
+        if extra_body is None:
+            extra_body = {}
+        
+        if isinstance(extra_body, dict):
+            merged_extra_body = dict(extra_body)
+            
+            if enable_thinking is not None:
+                merged_extra_body["enable_thinking"] = bool(enable_thinking)
+            
+            if non_streaming and "enable_thinking" not in merged_extra_body:
+                merged_extra_body["enable_thinking"] = False
+            
+            normalized["extra_body"] = merged_extra_body
+        
+        return normalized
     
     def invoke(self, messages: List[Dict], **kwargs) -> LLMResponse:
         """非流式调用"""
@@ -118,6 +140,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         start_time = time.time()
         
         try:
+            kwargs = self._normalize_thinking_kwargs(kwargs, non_streaming=True)
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -168,6 +191,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         start_time = time.time()
         
         try:
+            kwargs = self._normalize_thinking_kwargs(kwargs, non_streaming=True)
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,

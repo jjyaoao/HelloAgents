@@ -135,12 +135,14 @@ class HelloAgentsLLM:
             if response.reasoning_content:  # thinking model的推理过程
                 print(response.reasoning_content)
         """
-        # 合并参数
-        call_kwargs = {
-            "temperature": kwargs.pop("temperature", self.temperature),
-        }
-        if self.max_tokens:
-            call_kwargs["max_tokens"] = kwargs.pop("max_tokens", self.max_tokens)
+        # 合并参数：调用参数 > 初始化参数（self.kwargs） > 默认参数
+        temperature = kwargs.pop("temperature", self.temperature)
+        max_tokens = kwargs.pop("max_tokens", self.max_tokens)
+
+        call_kwargs = dict(self.kwargs)
+        call_kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
         call_kwargs.update(kwargs)
 
         return self._adapter.invoke(messages, **call_kwargs)
@@ -160,12 +162,12 @@ class HelloAgentsLLM:
         Note:
             流式调用结束后，可通过 llm.last_call_stats 获取统计信息
         """
-        temperature = kwargs.pop("temperature", None)
+        max_tokens = kwargs.pop("max_tokens", self.max_tokens)
 
-        # 准备参数
-        call_kwargs = {}
-        if self.max_tokens:
-            call_kwargs["max_tokens"] = kwargs.pop("max_tokens", self.max_tokens)
+        call_kwargs = dict(self.kwargs)
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
+
         call_kwargs.update(kwargs)
 
         for chunk in self._adapter.stream_invoke(messages, temperature=temperature, **call_kwargs):
@@ -203,13 +205,14 @@ class HelloAgentsLLM:
         Raises:
             HelloAgentsException: 当 LLM 调用失败时
         """
-        # 合并参数
-        call_kwargs = {
-            "temperature": kwargs.pop("temperature", self.temperature),
-            "tool_choice": tool_choice,
-        }
-        if self.max_tokens:
-            call_kwargs["max_tokens"] = kwargs.pop("max_tokens", self.max_tokens)
+        temperature = kwargs.pop("temperature", self.temperature)
+        max_tokens = kwargs.pop("max_tokens", self.max_tokens)
+
+        call_kwargs = dict(self.kwargs)
+        call_kwargs["temperature"] = temperature
+        call_kwargs["tool_choice"] = tool_choice
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
         call_kwargs.update(kwargs)
 
         return self._adapter.invoke_with_tools(messages, tools, **call_kwargs)
