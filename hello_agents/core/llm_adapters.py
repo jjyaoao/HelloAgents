@@ -13,7 +13,7 @@ from .exceptions import HelloAgentsException
 class BaseLLMAdapter(ABC):
     """LLM适配器基类"""
 
-    def __init__(self, api_key: str, base_url: Optional[str], timeout: int, model: str):
+    def __init__(self, api_key: Optional[str], base_url: Optional[str], timeout: int, model: str):
         self.api_key = api_key
         self.base_url = base_url
         self.timeout = timeout
@@ -857,20 +857,271 @@ class GeminiAdapter(BaseLLMAdapter):
             raise HelloAgentsException(f"Gemini工具调用失败: {str(e)}")
 
 
+class LiteLLMAdapter(BaseLLMAdapter):
+    """LiteLLM gateway adapter (access to 100+ providers via one interface).
+
+    LiteLLM returns OpenAI-shaped responses, so parsing mirrors OpenAIAdapter.
+    Routing is by model prefix (e.g. "anthropic/claude-...", "gemini/...",
+    "bedrock/...") plus each provider's own env vars, so base_url/api_key are
+    optional here:
+    - api_key is forwarded only when set; when blank LiteLLM falls back to the
+      provider-specific env var (ANTHROPIC_API_KEY, GEMINI_API_KEY, ...).
+    - base_url is forwarded as api_base only when set (e.g. a LiteLLM proxy).
+    - drop_params=True by default so per-provider-unsupported kwargs (seed,
+      frequency_penalty, response_format, ...) are silently dropped instead of
+      raising. Pass drop_params=False to opt out.
+    """
+
+    def create_client(self) -> Any:
+        """Return the litellm module (lazy import so it stays an optional extra)."""
+        try:
+            import litellm
+        except ImportError:
+            raise HelloAgentsException(
+                "Using the LiteLLM provider requires: pip install litellm"
+            )
+        return litellm
+
+    def create_async_client(self) -> Any:
+        """LiteLLM uses the same module for sync and async calls."""
+        return self.create_client()
+
+    def _build_params(self, messages: List[Dict], **kwargs) -> Dict[str, Any]:
+        """Assemble litellm.completion kwargs, omitting blank credentials."""
+        params: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "drop_params": True,
+        }
+        if self.api_key:
+            params["api_key"] = self.api_key
+        if self.base_url:
+            params["api_base"] = self.base_url
+        if self.timeout:
+            params["timeout"] = self.timeout
+        # User kwargs win, including an explicit drop_params=False opt-out.
+        params.update(kwargs)
+        return params
+
+    def invoke(self, messages: List[Dict], **kwargs) -> LLMResponse:
+        """Non-streaming call."""
+        if not self._client:
+            self._client = self.create_client()
+
+        start_time = time.time()
+        try:
+            response = self._client.completion(**self._build_params(messages, **kwargs))
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            choice = response.choices[0]
+            content = choice.message.content or ""
+            reasoning_content = None
+
+            if self._is_thinking_model(self.model):
+                if hasattr(choice.message, "reasoning_content"):
+                    reasoning_content = choice.message.reasoning_content
+                elif hasattr(choice, "reasoning_content"):
+                    reasoning_content = choice.reasoning_content
+
+            usage = {}
+            if hasattr(response, "usage") and response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+
+            return LLMResponse(
+                content=content,
+                model=self.model,
+                usage=usage,
+                latency_ms=latency_ms,
+                reasoning_content=reasoning_content,
+            )
+
+        except HelloAgentsException:
+            raise
+        except Exception as e:
+            raise HelloAgentsException(f"LiteLLM API call failed: {str(e)}")
+
+    def stream_invoke(self, messages: List[Dict], **kwargs) -> Iterator[str]:
+        """Streaming call."""
+        if not self._client:
+            self._client = self.create_client()
+
+        start_time = time.time()
+        try:
+            response = self._client.completion(
+                stream=True, **self._build_params(messages, **kwargs)
+            )
+
+            reasoning_content = None
+            usage = {}
+
+            for chunk in response:
+                choices = getattr(chunk, "choices", None)
+                if choices:
+                    delta = getattr(choices[0], "delta", None)
+                    if delta is not None:
+                        content = getattr(delta, "content", None)
+                        if content:
+                            yield content
+
+                        if self._is_thinking_model(self.model):
+                            reasoning_delta = getattr(delta, "reasoning_content", None)
+                            if reasoning_delta:
+                                if reasoning_content is None:
+                                    reasoning_content = ""
+                                reasoning_content += reasoning_delta
+
+                if hasattr(chunk, "usage") and chunk.usage:
+                    usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens,
+                        "completion_tokens": chunk.usage.completion_tokens,
+                        "total_tokens": chunk.usage.total_tokens,
+                    }
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            self.last_stats = StreamStats(
+                model=self.model,
+                usage=usage,
+                latency_ms=latency_ms,
+                reasoning_content=reasoning_content,
+            )
+
+        except HelloAgentsException:
+            raise
+        except Exception as e:
+            raise HelloAgentsException(f"LiteLLM API streaming call failed: {str(e)}")
+
+    async def astream_invoke(self, messages: List[Dict], **kwargs) -> AsyncIterator[str]:
+        """Native async streaming call (litellm.acompletion)."""
+        if not self._async_client:
+            self._async_client = self.create_async_client()
+
+        start_time = time.time()
+        try:
+            response = await self._async_client.acompletion(
+                stream=True, **self._build_params(messages, **kwargs)
+            )
+
+            reasoning_content = None
+            usage = {}
+
+            async for chunk in response:
+                choices = getattr(chunk, "choices", None)
+                if choices:
+                    delta = getattr(choices[0], "delta", None)
+                    if delta is not None:
+                        content = getattr(delta, "content", None)
+                        if content:
+                            yield content
+
+                        if self._is_thinking_model(self.model):
+                            reasoning_delta = getattr(delta, "reasoning_content", None)
+                            if reasoning_delta:
+                                if reasoning_content is None:
+                                    reasoning_content = ""
+                                reasoning_content += reasoning_delta
+
+                if hasattr(chunk, "usage") and chunk.usage:
+                    usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens,
+                        "completion_tokens": chunk.usage.completion_tokens,
+                        "total_tokens": chunk.usage.total_tokens,
+                    }
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            self.last_stats = StreamStats(
+                model=self.model,
+                usage=usage,
+                latency_ms=latency_ms,
+                reasoning_content=reasoning_content,
+            )
+
+        except HelloAgentsException:
+            raise
+        except Exception as e:
+            raise HelloAgentsException(f"LiteLLM API async streaming call failed: {str(e)}")
+
+    def invoke_with_tools(self, messages: List[Dict], tools: List[Dict],
+                          tool_choice: Union[str, Dict] = "auto", **kwargs) -> LLMToolResponse:
+        """Tool call (Function Calling). LiteLLM accepts OpenAI-style tool schema."""
+        if not self._client:
+            self._client = self.create_client()
+
+        start_time = time.time()
+        try:
+            response = self._client.completion(
+                tools=tools,
+                tool_choice=tool_choice,
+                **self._build_params(messages, **kwargs),
+            )
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            message = response.choices[0].message
+
+            tool_calls = []
+            if message.tool_calls:
+                for tc in message.tool_calls:
+                    tool_calls.append(ToolCall(
+                        id=tc.id,
+                        name=tc.function.name,
+                        arguments=tc.function.arguments,
+                    ))
+
+            usage = {}
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+
+            return LLMToolResponse(
+                content=message.content,
+                tool_calls=tool_calls,
+                model=response.model,
+                usage=usage,
+                latency_ms=latency_ms,
+            )
+
+        except HelloAgentsException:
+            raise
+        except Exception as e:
+            raise HelloAgentsException(f"LiteLLM Function Calling failed: {str(e)}")
+
+
 def create_adapter(
-    api_key: str,
+    api_key: Optional[str],
     base_url: Optional[str],
     timeout: int,
-    model: str
+    model: str,
+    provider: Optional[str] = None
 ) -> BaseLLMAdapter:
     """
     根据base_url自动选择适配器
 
     检测逻辑：
+    - explicit provider -> matching adapter (openai/anthropic/gemini/litellm)
     - anthropic.com -> AnthropicAdapter
     - googleapis.com 或 generativelanguage -> GeminiAdapter
     - 其他 -> OpenAIAdapter（默认）
     """
+    # Explicit provider selection takes precedence over base_url auto-detection.
+    if provider:
+        explicit = {
+            "openai": OpenAIAdapter,
+            "anthropic": AnthropicAdapter,
+            "gemini": GeminiAdapter,
+            "litellm": LiteLLMAdapter,
+        }.get(provider.lower())
+        if explicit is not None:
+            return explicit(api_key, base_url, timeout, model)
+
     if base_url:
         base_url_lower = base_url.lower()
 
