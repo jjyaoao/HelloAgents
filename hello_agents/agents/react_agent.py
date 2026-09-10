@@ -830,6 +830,31 @@ class ReActAgent(Agent):
 
                     print(f"🎬 调用工具: {tool_name}({arguments})")
 
+                    # 异步拦截器检查（Human-in-the-loop - 不阻塞事件循环）
+                    interceptor_result = await self._tool_interceptor.aintercept(
+                        tool_name=tool_name,
+                        parameters=arguments,
+                        context={
+                            "agent_name": self.name,
+                            "agent_type": self.__class__.__name__,
+                            "step": current_step,
+                        }
+                    )
+                    if interceptor_result.is_denied:
+                        result_content = f"❌ 工具调用被拦截: {interceptor_result.reason}"
+                        print(result_content)
+                        if self.trace_logger:
+                            self.trace_logger.log_event(
+                                "tool_intercepted",
+                                {
+                                    "tool_name": tool_name,
+                                    "tool_call_id": tool_call_id,
+                                    "reason": interceptor_result.reason
+                                },
+                                step=current_step
+                            )
+                        return (tool_name, tool_call_id, {"content": result_content})
+
                     # 异步执行工具
                     tool = self.tool_registry.get_tool(tool_name)
                     if not tool:
@@ -1206,6 +1231,21 @@ class ReActAgent(Agent):
                     )
 
                     print(f"🔧 调用工具: {tool_name}({arguments})")
+
+                    # 异步拦截器检查（Human-in-the-loop - 不阻塞事件循环）
+                    interceptor_result = await self._tool_interceptor.aintercept(
+                        tool_name=tool_name,
+                        parameters=arguments,
+                        context={
+                            "agent_name": self.name,
+                            "agent_type": self.__class__.__name__,
+                            "step": current_step,
+                        }
+                    )
+                    if interceptor_result.is_denied:
+                        result_content = f"❌ 工具调用被拦截: {interceptor_result.reason}"
+                        print(result_content)
+                        return (tool_name, tool_call_id, {"content": result_content})
 
                     # 异步执行工具
                     tool = self.tool_registry.get_tool(tool_name)

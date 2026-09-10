@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
     from ..observability.trace_logger import TraceLogger
     from ..tools.tool_filter import ToolFilter
+    from ..tools.interceptor import ToolInterceptor
 
 
 class Agent(ABC):
@@ -44,6 +45,10 @@ class Agent(ABC):
 
         # 工具注册表（可选）
         self.tool_registry = tool_registry
+
+        # 工具调用拦截器（默认始终放行，向后兼容）
+        from ..tools.interceptor import AlwaysAllowInterceptor
+        self._tool_interceptor: ToolInterceptor = AlwaysAllowInterceptor()
 
         # 新增：上下文工程组件
         from hello_agents.context.history import HistoryManager
@@ -501,6 +506,36 @@ class Agent(ABC):
     def __repr__(self) -> str:
         return self.__str__()
 
+    # ==================== 工具调用拦截器 ====================
+
+    def set_tool_interceptor(self, interceptor: 'ToolInterceptor'):
+        """设置工具调用拦截器
+
+        在工具执行前插入确认/拦截逻辑，实现 Human-in-the-loop。
+
+        Args:
+            interceptor: ToolInterceptor 实例
+
+        Example:
+            >>> from hello_agents.tools.interceptor import ConsoleConfirmInterceptor
+            >>> agent.set_tool_interceptor(
+            ...     ConsoleConfirmInterceptor(whitelist={"ReadTool", "TodoWriteTool"})
+            ... )
+
+        拦截器同时作用于 Agent 和 ToolRegistry 两个层面：
+        - Agent 层：此方法设置 Agent 的拦截器
+        - Registry 层：自动同步到 self.tool_registry.interceptor
+        """
+        self._tool_interceptor = interceptor
+        # 同步到注册表（确保直接调用 registry.execute_tool() 也会被拦截）
+        if self.tool_registry:
+            self.tool_registry.set_interceptor(interceptor)
+
+    @property
+    def tool_interceptor(self) -> 'ToolInterceptor':
+        """获取当前的工具调用拦截器"""
+        return self._tool_interceptor
+
     # ==================== 工具调用通用能力（从 FunctionCallAgent 提取）====================
 
     def _build_tool_schemas(self) -> List[Dict[str, Any]]:
@@ -650,6 +685,7 @@ class Agent(ABC):
         统一的工具执行逻辑，支持：
         - Tool 对象（带类型转换）
         - 函数工具（简化调用）
+        - 拦截器检查（Human-in-the-loop）
 
         Args:
             tool_name: 工具名称
@@ -660,6 +696,18 @@ class Agent(ABC):
         """
         if not self.tool_registry:
             return "❌ 错误：未配置工具注册表"
+
+        # 0. 检查拦截器（Human-in-the-loop）
+        interceptor_result = self._tool_interceptor.intercept(
+            tool_name=tool_name,
+            parameters=arguments,
+            context={
+                "agent_name": self.name,
+                "agent_type": self.__class__.__name__,
+            }
+        )
+        if interceptor_result.is_denied:
+            return f"❌ 工具调用被拦截: {interceptor_result.reason}"
 
         # 1. 尝试执行 Tool 对象
         tool = self.tool_registry.get_tool(tool_name)
@@ -688,6 +736,74 @@ class Agent(ABC):
                 response = self.tool_registry.execute_tool(tool_name, input_text)
 
                 # 根据状态添加前缀
+                from ..tools.response import ToolStatus
+                if response.status == ToolStatus.ERROR:
+                    error_code = response.error_info.get("code", "UNKNOWN") if response.error_info else "UNKNOWN"
+                    return f"❌ 错误 [{error_code}]: {response.text}"
+                elif response.status == ToolStatus.PARTIAL:
+                    return f"⚠️ 部分成功: {response.text}"
+                else:
+                    return response.text
+            except Exception as exc:
+                return f"❌ 工具调用失败：{exc}"
+
+        return f"❌ 错误：未找到工具 '{tool_name}'"
+
+    async def _aexecute_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> str:
+        """异步执行工具调用并返回字符串结果
+
+        与 _execute_tool_call() 功能相同，但使用异步拦截器。
+        适用于异步 Agent（如 ReActAgent.arun()）。
+
+        Args:
+            tool_name: 工具名称
+            arguments: 工具参数
+
+        Returns:
+            工具执行结果（字符串格式）
+        """
+        if not self.tool_registry:
+            return "❌ 错误：未配置工具注册表"
+
+        # 0. 异步检查拦截器（Human-in-the-loop - 不阻塞事件循环）
+        interceptor_result = await self._tool_interceptor.aintercept(
+            tool_name=tool_name,
+            parameters=arguments,
+            context={
+                "agent_name": self.name,
+                "agent_type": self.__class__.__name__,
+            }
+        )
+        if interceptor_result.is_denied:
+            return f"❌ 工具调用被拦截: {interceptor_result.reason}"
+
+        # 1. 尝试执行 Tool 对象
+        tool = self.tool_registry.get_tool(tool_name)
+        if tool:
+            try:
+                typed_arguments = self._convert_parameter_types(tool_name, arguments)
+                # 使用工具的异步执行方法
+                response = await tool.arun_with_timing(typed_arguments)
+
+                from ..tools.response import ToolStatus
+                if response.status == ToolStatus.ERROR:
+                    error_code = response.error_info.get("code", "UNKNOWN") if response.error_info else "UNKNOWN"
+                    return f"❌ 错误 [{error_code}]: {response.text}"
+                elif response.status == ToolStatus.PARTIAL:
+                    return f"⚠️ 部分成功: {response.text}"
+                else:
+                    return response.text
+            except Exception as exc:
+                return f"❌ 工具调用失败：{exc}"
+
+        # 2. 尝试执行函数工具
+        func = self.tool_registry.get_function(tool_name)
+        if func:
+            try:
+                input_text = arguments.get("input", "")
+                # 使用注册表的异步执行方法（含拦截器保护）
+                response = await self.tool_registry.aexecute_tool(tool_name, input_text)
+
                 from ..tools.response import ToolStatus
                 if response.status == ToolStatus.ERROR:
                     error_code = response.error_info.get("code", "UNKNOWN") if response.error_info else "UNKNOWN"

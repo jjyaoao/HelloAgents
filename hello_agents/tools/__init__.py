@@ -16,6 +16,19 @@ from .builtin.skill_tool import SkillTool
 # 子代理机制
 from .tool_filter import ToolFilter, ReadOnlyFilter, FullAccessFilter, CustomFilter
 
+# 工具调用拦截器
+from .interceptor import (
+    InterceptorDecision,
+    InterceptorResult,
+    ToolInterceptor,
+    AlwaysAllowInterceptor,
+    ConsoleConfirmInterceptor,
+    CallbackInterceptor,
+    SessionConfirmInterceptor,
+    InterceptCallback,
+    AsyncInterceptCallback,
+)
+
 __all__ = [
     # 基础工具系统
     "Tool",
@@ -50,4 +63,15 @@ __all__ = [
     "ReadOnlyFilter",
     "FullAccessFilter",
     "CustomFilter",
+
+    # 工具调用拦截器
+    "InterceptorDecision",
+    "InterceptorResult",
+    "ToolInterceptor",
+    "AlwaysAllowInterceptor",
+    "ConsoleConfirmInterceptor",
+    "CallbackInterceptor",
+    "SessionConfirmInterceptor",
+    "InterceptCallback",
+    "AsyncInterceptCallback",
 ]
