@@ -33,8 +33,9 @@ from ..errors import ToolErrorCode
 @dataclass
 class TodoItem:
     """待办事项"""
+
     content: str  # 任务内容
-    status: str  # "pending" | "in_progress" | "completed"
+    status: str  # 状态取值："pending"（待处理）、"in_progress"（进行中）、"completed"（已完成）
     created_at: str  # 创建时间
     updated_at: str = ""  # 更新时间
 
@@ -46,6 +47,7 @@ class TodoItem:
 @dataclass
 class TodoList:
     """待办列表"""
+
     summary: str  # 总体摘要
     todos: List[TodoItem] = field(default_factory=list)
 
@@ -58,17 +60,11 @@ class TodoList:
 
     def get_pending(self, limit: int = 5) -> List[TodoItem]:
         """获取待处理任务"""
-        return [
-            todo for todo in self.todos
-            if todo.status == "pending"
-        ][:limit]
+        return [todo for todo in self.todos if todo.status == "pending"][:limit]
 
     def get_completed(self) -> List[TodoItem]:
         """获取已完成任务"""
-        return [
-            todo for todo in self.todos
-            if todo.status == "completed"
-        ]
+        return [todo for todo in self.todos if todo.status == "completed"]
 
     def get_stats(self) -> dict:
         """获取统计信息"""
@@ -81,13 +77,13 @@ class TodoList:
             "total": total,
             "completed": completed,
             "in_progress": in_progress,
-            "pending": pending
+            "pending": pending,
         }
 
 
 class TodoWriteTool(Tool):
     """待办事项工具
-    
+
     特性：
     - 声明式覆盖（每次提交完整列表）
     - 单线程强制（最多 1 个 in_progress）
@@ -95,13 +91,9 @@ class TodoWriteTool(Tool):
     - 持久化到文件
     """
 
-    def __init__(
-        self,
-        project_root: str = ".",
-        persistence_dir: str = "memory/todos"
-    ):
+    def __init__(self, project_root: str = ".", persistence_dir: str = "memory/todos"):
         """初始化 TodoWriteTool
-        
+
         Args:
             project_root: 项目根目录
             persistence_dir: 持久化目录（相对于 project_root）
@@ -125,14 +117,14 @@ class TodoWriteTool(Tool):
 - summary: 总体任务描述（可选）
 - todos: 待办事项列表（JSON 数组）
 - action: 操作类型（create/update/clear，默认 create）""",
-            expandable=False
+            expandable=False,
         )
         self.project_root = Path(project_root)
         self.persistence_dir = self.project_root / persistence_dir
-        
+
         # 确保目录存在
         self.persistence_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # 当前 Todo 列表
         self.current_todos = TodoList(summary="")
 
@@ -143,7 +135,7 @@ class TodoWriteTool(Tool):
                 type="string",
                 description="总体任务描述（简短，1-2 句话）",
                 required=False,
-                default=""
+                default="",
             ),
             ToolParameter(
                 name="todos",
@@ -161,15 +153,32 @@ class TodoWriteTool(Tool):
 - 最多 1 个任务可以标记为 in_progress
 - 每次提交完整列表（声明式）""",
                 required=False,
-                default=[]
+                default=[],
+                json_schema={
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {"type": "string", "minLength": 1},
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "in_progress", "completed"],
+                            },
+                            "created_at": {"type": "string"},
+                            "updated_at": {"type": "string"},
+                        },
+                        "required": ["content", "status"],
+                        "additionalProperties": False,
+                    },
+                },
             ),
             ToolParameter(
                 name="action",
                 type="string",
                 description="操作类型：create|update|clear（默认 create）",
                 required=False,
-                default="create"
-            )
+                default="create",
+            ),
         ]
 
     def run(self, parameters: Dict[str, Any]) -> ToolResponse:
@@ -190,6 +199,7 @@ class TodoWriteTool(Tool):
             if action == "clear":
                 # 清空任务列表
                 self.current_todos = TodoList(summary="")
+                self._persist_todos()
                 recap = "✅ 任务列表已清空"
 
                 return ToolResponse.success(
@@ -197,8 +207,13 @@ class TodoWriteTool(Tool):
                     data={
                         "action": action,
                         "summary": "",
-                        "stats": {"total": 0, "completed": 0, "in_progress": 0, "pending": 0}
-                    }
+                        "stats": {
+                            "total": 0,
+                            "completed": 0,
+                            "in_progress": 0,
+                            "pending": 0,
+                        },
+                    },
                 )
 
             # 获取 todos 参数
@@ -211,15 +226,14 @@ class TodoWriteTool(Tool):
                 except json.JSONDecodeError as e:
                     return ToolResponse.error(
                         code=ToolErrorCode.INVALID_PARAM,
-                        message=f"todos JSON 格式错误：{str(e)}"
+                        message=f"todos JSON 格式错误：{str(e)}",
                     )
 
             # 验证约束
             validation = self._validate_todos(todos_data)
             if not validation["valid"]:
                 return ToolResponse.error(
-                    code=ToolErrorCode.INVALID_PARAM,
-                    message=validation["message"]
+                    code=ToolErrorCode.INVALID_PARAM, message=validation["message"]
                 )
 
             # 创建 TodoItem 对象
@@ -229,7 +243,7 @@ class TodoWriteTool(Tool):
                     content=item["content"],
                     status=item["status"],
                     created_at=item.get("created_at", now),
-                    updated_at=now
+                    updated_at=now,
                 )
                 for item in todos_data
             ]
@@ -249,14 +263,13 @@ class TodoWriteTool(Tool):
                 data={
                     "action": action,
                     "summary": self.current_todos.summary,
-                    "stats": self.current_todos.get_stats()
-                }
+                    "stats": self.current_todos.get_stats(),
+                },
             )
 
         except Exception as e:
             return ToolResponse.error(
-                code=ToolErrorCode.INTERNAL_ERROR,
-                message=f"处理任务列表失败：{str(e)}"
+                code=ToolErrorCode.INTERNAL_ERROR, message=f"处理任务列表失败：{str(e)}"
             )
 
     def _validate_todos(self, todos_data: list) -> dict:
@@ -266,39 +279,37 @@ class TodoWriteTool(Tool):
             {"valid": bool, "message": str}
         """
         if not isinstance(todos_data, list):
-            return {
-                "valid": False,
-                "message": "todos 必须是数组"
-            }
+            return {"valid": False, "message": "todos 必须是数组"}
 
-        in_progress_count = sum(1 for t in todos_data if t.get("status") == "in_progress")
+        if any(not isinstance(todo, dict) for todo in todos_data):
+            return {"valid": False, "message": "每个任务必须是对象"}
+        in_progress_count = sum(
+            1 for t in todos_data if t.get("status") == "in_progress"
+        )
 
         if in_progress_count > 1:
             return {
                 "valid": False,
-                "message": f"最多只能有 1 个 in_progress 任务，当前有 {in_progress_count} 个"
+                "message": f"最多只能有 1 个 in_progress 任务，当前有 {in_progress_count} 个",
             }
 
         for i, todo in enumerate(todos_data):
             if not isinstance(todo, dict):
-                return {
-                    "valid": False,
-                    "message": f"第 {i+1} 个任务必须是对象"
-                }
+                return {"valid": False, "message": f"第 {i+1} 个任务必须是对象"}
 
             content = todo.get("content", "")
             status = todo.get("status", "")
 
-            if not content.strip():
+            if not isinstance(content, str) or not content.strip():
                 return {
                     "valid": False,
-                    "message": f"第 {i+1} 个任务的 content 不能为空"
+                    "message": f"第 {i+1} 个任务的 content 不能为空",
                 }
 
             if status not in ["pending", "in_progress", "completed"]:
                 return {
                     "valid": False,
-                    "message": f"第 {i+1} 个任务的 status 必须是 pending/in_progress/completed"
+                    "message": f"第 {i+1} 个任务的 status 必须是 pending/in_progress/completed",
                 }
 
         return {"valid": True, "message": ""}
@@ -310,7 +321,7 @@ class TodoWriteTool(Tool):
         """
         stats = self.current_todos.get_stats()
 
-        if stats['total'] == 0:
+        if stats["total"] == 0:
             return "📋 [0/0] 无活动任务"
 
         recap_parts = [f"📋 [{stats['completed']}/{stats['total']}]"]
@@ -324,10 +335,10 @@ class TodoWriteTool(Tool):
             pending_texts = [t.content for t in pending]
             recap_parts.append(f"待处理: {'; '.join(pending_texts)}")
 
-        if stats['pending'] > 3:
+        if stats["pending"] > 3:
             recap_parts.append(f"还有 {stats['pending'] - 3} 个...")
 
-        if stats['completed'] == stats['total'] and stats['total'] > 0:
+        if stats["completed"] == stats["total"] and stats["total"] > 0:
             return f"✅ [{stats['completed']}/{stats['total']}] 所有任务已完成！"
 
         return ". ".join(recap_parts)
@@ -346,17 +357,17 @@ class TodoWriteTool(Tool):
                     "content": t.content,
                     "status": t.status,
                     "created_at": t.created_at,
-                    "updated_at": t.updated_at
+                    "updated_at": t.updated_at,
                 }
                 for t in self.current_todos.todos
             ],
             "created_at": datetime.now().isoformat(),
-            "stats": self.current_todos.get_stats()
+            "stats": self.current_todos.get_stats(),
         }
 
         # 原子写入
-        temp_path = filepath.with_suffix('.tmp')
-        with open(temp_path, 'w', encoding='utf-8') as f:
+        temp_path = filepath.with_suffix(".tmp")
+        with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
         temp_path.replace(filepath)
@@ -367,7 +378,7 @@ class TodoWriteTool(Tool):
         Args:
             filepath: 任务列表文件路径
         """
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         todos = [
@@ -375,13 +386,9 @@ class TodoWriteTool(Tool):
                 content=t["content"],
                 status=t["status"],
                 created_at=t["created_at"],
-                updated_at=t.get("updated_at", t["created_at"])
+                updated_at=t.get("updated_at", t["created_at"]),
             )
             for t in data["todos"]
         ]
 
-        self.current_todos = TodoList(
-            summary=data.get("summary", ""),
-            todos=todos
-        )
-
+        self.current_todos = TodoList(summary=data.get("summary", ""), todos=todos)

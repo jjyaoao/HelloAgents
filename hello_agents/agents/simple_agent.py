@@ -1,26 +1,27 @@
-"""简单Agent实现 - 基于 Function Calling"""
+"""在共享工具与事件运行机制上提供简洁的 Agent 接口。"""
 
-from typing import Optional, Iterator, TYPE_CHECKING, List, Dict, Any, AsyncGenerator
+import asyncio
 import json
-
+from copy import deepcopy
+from contextlib import aclosing
+from typing import Optional, List, TYPE_CHECKING
 from ..core.agent import Agent
 from ..core.llm import HelloAgentsLLM
 from ..core.config import Config
+from ..core.components import AgentComponents
 from ..core.message import Message
+from ..core.lifecycle import EventType
 from ..core.streaming import StreamEvent, StreamEventType
-from ..core.lifecycle import LifecycleHook
+from ..core.budget import BudgetExceeded
+from ..core.runtime import RunResult, sync_events, turn_events, close_interrupted_turn
+from ..context.providers import ContextAssembler, ContextProvider
 
 if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
 
-class SimpleAgent(Agent):
-    """简单的对话Agent，支持可选的工具调用
 
-    特性：
-    - 纯对话模式（无工具）
-    - Function Calling 工具调用（可选）
-    - 自动多轮工具调用
-    """
+class SimpleAgent(Agent):
+    """run、arun 与流式事件入口遵循相同的执行语义。"""
 
     def __init__(
         self,
@@ -28,9 +29,12 @@ class SimpleAgent(Agent):
         llm: HelloAgentsLLM,
         system_prompt: Optional[str] = None,
         config: Optional[Config] = None,
-        tool_registry: Optional['ToolRegistry'] = None,
+        tool_registry: Optional["ToolRegistry"] = None,
         enable_tool_calling: bool = True,
-        max_tool_iterations: int = 3
+        max_tool_iterations: int = 3,
+        context_builder: Optional[ContextAssembler] = None,
+        context_providers: Optional[List[ContextProvider]] = None,
+        components: Optional[AgentComponents] = None,
     ):
         """
         初始化SimpleAgent
@@ -43,6 +47,7 @@ class SimpleAgent(Agent):
             tool_registry: 工具注册表（可选，如果提供则启用工具调用）
             enable_tool_calling: 是否启用工具调用（只有在提供tool_registry时生效）
             max_tool_iterations: 最大工具调用迭代次数
+            components: 显式组件覆盖；未指定的部分沿用 Config 默认装配
         """
         # 传递 tool_registry 到基类
         super().__init__(
@@ -50,248 +55,377 @@ class SimpleAgent(Agent):
             llm,
             system_prompt,
             config,
-            tool_registry=tool_registry
+            tool_registry=tool_registry,
+            components=components,
         )
         self.enable_tool_calling = enable_tool_calling and tool_registry is not None
         self.max_tool_iterations = max_tool_iterations
+        self.context_builder = context_builder
+        self.context_providers = list(context_providers or [])
+        if self.context_providers and context_builder is None:
+            raise ValueError("使用 context_providers 需要显式配置 context_builder")
+        self.last_context_diagnostics = None
 
-    def run(self, input_text: str, **kwargs) -> str:
-        """
-        运行 SimpleAgent（基于 Function Calling）
+        if type(max_tool_iterations) is not int or max_tool_iterations < 1:
+            raise ValueError("max_tool_iterations 必须是正整数")
+        self.last_run = None
+        self._run_active = False
+        self._messages_since_save = 0
 
-        Args:
-            input_text: 用户输入
-            **kwargs: 其他参数
+    def run(self, input_text, **kwargs):
+        for _ in sync_events(self._events(input_text, stream=False, **kwargs)):
+            pass
+        return self.last_run.answer
 
-        Returns:
-            最终回复
-        """
-        from datetime import datetime
-        from hello_agents.observability import TraceLogger
+    def stream_run(self, input_text, **kwargs):
+        for event in sync_events(self._events(input_text, stream=True, **kwargs)):
+            if event.type == StreamEventType.LLM_CHUNK:
+                yield event.data["chunk"]
 
-        session_start_time = datetime.now()
+    async def arun(
+        self,
+        input_text,
+        *,
+        on_start=None,
+        on_step=None,
+        on_finish=None,
+        on_error=None,
+        on_tool_call=None,
+        **kwargs,
+    ):
+        async for _ in self._events(
+            input_text,
+            stream=False,
+            on_start=on_start,
+            on_step=on_step,
+            on_finish=on_finish,
+            on_error=on_error,
+            on_tool_call=on_tool_call,
+            **kwargs,
+        ):
+            pass
+        return self.last_run.answer
 
-        # 为每次 run 创建新的 TraceLogger（避免多轮对话时文件已关闭的问题）
-        trace_logger = None
-        if self.config.trace_enabled:
-            trace_logger = TraceLogger(
-                output_dir=self.config.trace_dir,
-                sanitize=self.config.trace_sanitize,
-                html_include_raw_response=self.config.trace_html_include_raw_response
+    async def arun_stream(
+        self,
+        input_text,
+        *,
+        on_start=None,
+        on_step=None,
+        on_finish=None,
+        on_error=None,
+        on_tool_call=None,
+        **kwargs,
+    ):
+        async with aclosing(
+            self._events(
+                input_text,
+                stream=True,
+                on_start=on_start,
+                on_step=on_step,
+                on_finish=on_finish,
+                on_error=on_error,
+                on_tool_call=on_tool_call,
+                **kwargs,
             )
-            trace_logger.log_event(
-                "session_start",
-                {
-                    "agent_name": self.name,
-                    "agent_type": self.__class__.__name__,
-                }
-            )
+        ) as events:
+            async for event in events:
+                yield event
 
-        # 构建消息列表
-        messages = self._build_messages(input_text)
+    async def _run_loop(self, messages, packets, stream, kwargs):
+        async with aclosing(
+            turn_events(self, messages, packets, stream=stream, kwargs=kwargs)
+        ) as source:
+            async for event in source:
+                yield event
 
-        # 记录用户消息
-        if trace_logger:
-            trace_logger.log_event(
-                "message_written",
-                {"role": "user", "content": input_text}
-            )
-
-        # 如果没有启用工具调用，直接返回 LLM 响应
-        if not self.enable_tool_calling or not self.tool_registry:
-            llm_response = self.llm.invoke(messages, **kwargs)
-            response_text = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
-
-            # 保存到历史记录
-            self.add_message(Message(input_text, "user"))
-            self.add_message(Message(response_text, "assistant"))
-
-            if trace_logger:
-                duration = (datetime.now() - session_start_time).total_seconds()
-                trace_logger.log_event(
-                    "session_end",
-                    {
-                        "duration": duration,
-                        "final_answer": response_text,
-                        "status": "success",
-                        "usage": llm_response.usage if hasattr(llm_response, 'usage') else {},
-                        "latency_ms": llm_response.latency_ms if hasattr(llm_response, 'latency_ms') else 0
-                    }
-                )
-                trace_logger.finalize()
-
-            return response_text
-
-        # 启用工具调用模式
-        tool_schemas = self._build_tool_schemas()
-
-        current_iteration = 0
-        final_response = ""
-
-        while current_iteration < self.max_tool_iterations:
-            current_iteration += 1
-
-            # 调用 LLM（Function Calling）
-            try:
-                response = self.llm.invoke_with_tools(
-                    messages=messages,
-                    tools=tool_schemas,
-                    tool_choice="auto",
-                    **kwargs
-                )
-            except Exception as e:
-                print(f"❌ LLM 调用失败: {e}")
-                if trace_logger:
-                    trace_logger.log_event(
-                        "error",
-                        {"error_type": "LLM_ERROR", "message": str(e)},
-                        step=current_iteration
-                    )
-                break
-
-            # 获取响应消息
-            # response 现在是 LLMToolResponse 对象
-
-            # 记录模型输出
-            if trace_logger:
-                usage = response.usage
-                trace_logger.log_event(
-                    "model_output",
-                    {
-                        "content": response.content,
-                        "tool_calls": len(response.tool_calls) if response.tool_calls else 0,
-                        "usage": {
-                            "prompt_tokens": usage.get("prompt_tokens", 0) if usage else 0,
-                            "completion_tokens": usage.get("completion_tokens", 0) if usage else 0,
-                            "total_tokens": usage.get("total_tokens", 0) if usage else 0
-                        }
-                    },
-                    step=current_iteration
-                )
-
-            # 处理工具调用
-            tool_calls = response.tool_calls
-            if not tool_calls:
-                # 没有工具调用，直接返回文本响应
-                final_response = response.content or "抱歉，我无法回答这个问题。"
-                break
-
-            # 将助手消息添加到历史
-            messages.append({
-                "role": "assistant",
-                "content": response.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.name,
-                            "arguments": tc.arguments
-                        }
-                    }
-                    for tc in tool_calls
-                ]
-            })
-
-            # 执行所有工具调用
-            for tool_call in tool_calls:
-                tool_name = tool_call.name
-                tool_call_id = tool_call.id
-
-                try:
-                    arguments = json.loads(tool_call.arguments)
-                except json.JSONDecodeError as e:
-                    print(f"❌ 工具参数解析失败: {e}")
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": f"错误：参数格式不正确 - {str(e)}"
-                    })
-                    continue
-
-                # 记录工具调用
-                if trace_logger:
-                    trace_logger.log_event(
-                        "tool_call",
-                        {
-                            "tool_name": tool_name,
-                            "tool_call_id": tool_call_id,
-                            "args": arguments
-                        },
-                        step=current_iteration
-                    )
-
-                # 执行工具（复用基类方法）
-                result = self._execute_tool_call(tool_name, arguments)
-
-                # 记录工具结果
-                if trace_logger:
-                    trace_logger.log_event(
-                        "tool_result",
-                        {
-                            "tool_name": tool_name,
-                            "tool_call_id": tool_call_id,
-                            "result": result
-                        },
-                        step=current_iteration
-                    )
-
-                # 添加工具结果到消息
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": result
-                })
-
-        # 如果超过最大迭代次数，获取最后一次回答
-        if current_iteration >= self.max_tool_iterations and not final_response:
-            llm_response = self.llm.invoke(messages, **kwargs)
-            final_response = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
-
-        # 保存到历史记录
-        self.add_message(Message(input_text, "user"))
-        self.add_message(Message(final_response, "assistant"))
-
-        if trace_logger:
-            duration = (datetime.now() - session_start_time).total_seconds()
-            trace_logger.log_event(
-                "session_end",
-                {
-                    "duration": duration,
-                    "total_steps": current_iteration,
-                    "final_answer": final_response,
-                    "status": "success"
-                }
-            )
-            trace_logger.finalize()
-
-        return final_response
-
-    def _build_messages(self, input_text: str) -> List[Dict[str, str]]:
-        """构建消息列表"""
-        messages = []
-
-        # 添加系统提示词
-        if self.system_prompt:
-            messages.append({
-                "role": "system",
-                "content": self.system_prompt
-            })
-
-        # 添加历史消息
+    def _build_messages(self, input_text):
+        messages = (
+            [{"role": "system", "content": self.system_prompt}]
+            if self.system_prompt
+            else []
+        )
         for msg in self._history:
-            messages.append({
-                "role": msg.role,
-                "content": msg.content
-            })
-
-        # 添加用户问题
-        messages.append({
-            "role": "user",
-            "content": input_text
-        })
-
+            native = (msg.metadata or {}).get("model_message")
+            if native is not None:
+                messages.append(deepcopy(native))
+            else:
+                messages.append(
+                    {
+                        "role": "user" if msg.role == "summary" else msg.role,
+                        "content": (
+                            "[历史摘要，供参考]\n" + msg.content
+                            if msg.role == "summary"
+                            else msg.content
+                        ),
+                    }
+                )
+        messages.append({"role": "user", "content": input_text})
         return messages
+
+    def _commit_messages(self, messages, *, compress=True):
+        # 在压缩、保存或发出 AGENT_FINISH 事件前，写入完整的交互记录。
+        for item in messages:
+            self.history_manager.append(
+                Message(
+                    item.get("content") or "",
+                    item["role"],
+                    metadata={"model_message": deepcopy(item)},
+                )
+            )
+        self._history_token_count = self.token_counter.count_messages(
+            self.get_history()
+        )
+        if compress and self._should_compress():
+            self._compress_history()
+        self._messages_since_save += len(messages)
+        if (
+            self.config.auto_save_enabled
+            and self.session_store is not None
+            and self._messages_since_save >= self.config.auto_save_interval
+        ):
+            self._auto_save()
+            self._messages_since_save = 0
+
+    async def _aexecute_tool_call(self, name, arguments):
+        parameters = (
+            self._convert_parameter_types(name, arguments)
+            if self.tool_registry.get_tool(name)
+            else arguments.get("input", "")
+        )
+        response = await self.tool_registry.aexecute_tool(name, parameters)
+        text = response.to_model_text()
+        truncated = self.truncator.truncate(name, text)
+        if truncated.get("truncated"):
+            return json.dumps(
+                {
+                    "status": "partial",
+                    "text": "工具结果过长，以下为预览",
+                    "data": {
+                        "preview": truncated["preview"],
+                        "full_output_path": truncated.get("full_output_path"),
+                    },
+                },
+                ensure_ascii=False,
+            )
+        return text
+
+    async def _events(
+        self,
+        input_text,
+        *,
+        stream,
+        on_start=None,
+        on_step=None,
+        on_finish=None,
+        on_error=None,
+        on_tool_call=None,
+        **kwargs,
+    ):
+        if self._run_active:
+            raise RuntimeError(
+                "同一个 Agent 不能并发修改会话，请为独立任务创建独立实例"
+            )
+        self._run_active = True
+        self.last_run = RunResult()
+        logger = self.trace_logger
+        messages = None
+        committed = False
+        try:
+            if self.config.trace_enabled and (
+                logger is None or logger.jsonl_file.closed
+            ):
+                from ..observability import TraceLogger
+
+                logger = self.trace_logger = TraceLogger(
+                    self.config.trace_dir,
+                    sanitize=self.config.trace_sanitize,
+                    html_include_raw_response=self.config.trace_html_include_raw_response,
+                )
+                logger.log_event("session_start", {"agent_name": self.name})
+            packets = self._context_packets(kwargs)
+            messages = self._build_messages(input_text)
+            start = len(messages) - 1
+            await self._emit_event(
+                EventType.AGENT_START, on_start, input_text=input_text
+            )
+            yield StreamEvent.create(
+                StreamEventType.AGENT_START, self.name, input_text=input_text
+            )
+            async with aclosing(
+                self._run_loop(messages, packets, stream, kwargs)
+            ) as source:
+                async for event in source:
+                    kind = event["kind"]
+                    if kind in ("tool_start", "tool_finish"):
+                        event = dict(
+                            event, tool_name=event["name"], tool_call_id=event["id"]
+                        )
+                    if kind == "tool_start":
+                        try:
+                            event["args"] = json.loads(event["arguments"])
+                        except (TypeError, ValueError):
+                            event["args"] = None
+                    if logger and kind != "chunk":
+                        trace_kind = {
+                            "model": "model_output",
+                            "tool_start": "tool_call",
+                            "tool_finish": "tool_result",
+                        }.get(kind, kind)
+                        logger.log_event(trace_kind, event, step=event.get("step"))
+                    if kind == "chunk":
+                        yield StreamEvent.create(
+                            (
+                                StreamEventType.THINKING
+                                if event.get("phase") == "reflection"
+                                else StreamEventType.LLM_CHUNK
+                            ),
+                            self.name,
+                            chunk=event["text"],
+                            **{
+                                k: v
+                                for k, v in event.items()
+                                if k not in {"kind", "text"}
+                            },
+                        )
+                    elif kind == "model":
+                        if not getattr(self, "_parallel_tools", False):
+                            await self._emit_event(
+                                EventType.STEP_FINISH, on_step, **event
+                            )
+                    elif kind in ("step_start", "step_finish"):
+                        event_type = (
+                            StreamEventType.STEP_START
+                            if kind == "step_start"
+                            else StreamEventType.STEP_FINISH
+                        )
+                        if event.get("phase") == "tool_loop":
+                            await self._emit_event(
+                                (
+                                    EventType.STEP_START
+                                    if kind == "step_start"
+                                    else EventType.STEP_FINISH
+                                ),
+                                on_step,
+                                **event,
+                            )
+                        yield StreamEvent.create(event_type, self.name, **event)
+                    elif kind == "tool_start":
+                        await self._emit_event(
+                            EventType.TOOL_CALL, on_tool_call, **event
+                        )
+                        yield StreamEvent.create(
+                            StreamEventType.TOOL_CALL_START, self.name, **event
+                        )
+                    elif kind == "tool_finish":
+                        yield StreamEvent.create(
+                            StreamEventType.TOOL_CALL_FINISH, self.name, **event
+                        )
+            self._session_metadata.update(
+                total_steps=self.last_run.model_calls,
+                total_tokens=self.last_run.usage.get("total_tokens", 0),
+            )
+            committed = True
+            self._commit_messages(messages[start:])
+            await self._emit_event(
+                EventType.AGENT_FINISH,
+                on_finish,
+                result=self.last_run.answer,
+                status=self.last_run.status,
+                total_steps=self.last_run.model_calls,
+                total_tokens=self.last_run.usage.get("total_tokens", 0),
+            )
+            yield StreamEvent.create(
+                StreamEventType.AGENT_FINISH,
+                self.name,
+                result=self.last_run.answer,
+                status=self.last_run.status,
+                stop_reason=self.last_run.stop_reason,
+                total_steps=getattr(
+                    self, "_plan_total_steps", self.last_run.model_calls
+                ),
+                total_tokens=self.last_run.usage.get("total_tokens", 0),
+                max_steps_reached=self.last_run.status == "max_iterations",
+                **(
+                    {"total_iterations": self._reflection_iterations}
+                    if hasattr(self, "_reflection_iterations")
+                    else {}
+                ),
+            )
+        except (asyncio.CancelledError, GeneratorExit):
+            if not committed:
+                self.last_run.status = "cancelled"
+            raise
+        except Exception as exc:
+            self.last_run.status = "budget_exhausted" if isinstance(exc, BudgetExceeded) else "failed"
+            if logger:
+                logger.log_event(
+                    "error", {"message": str(exc), "error_type": type(exc).__name__}
+                )
+            await self._emit_event(
+                EventType.AGENT_ERROR,
+                on_error,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            yield StreamEvent.create(
+                StreamEventType.ERROR,
+                self.name,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise
+        finally:
+            try:
+                if messages is not None and not committed:
+                    self._session_metadata.update(
+                        total_steps=self.last_run.model_calls,
+                        total_tokens=self.last_run.usage.get("total_tokens", 0),
+                    )
+                    self._commit_messages(
+                        close_interrupted_turn(messages[start:]), compress=False
+                    )
+            finally:
+                try:
+                    if logger:
+                        logger.log_event(
+                            "session_end",
+                            {
+                                "status": self.last_run.status,
+                                "final_answer": self.last_run.answer,
+                                "total_steps": self.last_run.model_calls,
+                                "usage": self.last_run.usage,
+                            },
+                        )
+                        logger.finalize()
+                finally:
+                    self._run_active = False
+
+    def _context_packets(self, kwargs):
+        packets = list(kwargs.pop("context_packets", None) or [])
+        if packets and self.context_builder is None:
+            raise ValueError("使用 context_packets 需要显式配置 context_builder")
+        return packets
+
+    def _prepare_context(self, messages, packets, tool_schemas=None):
+        if self.context_builder is None:
+            return messages
+        query = next(
+            (
+                message.get("content") or ""
+                for message in reversed(messages)
+                if message.get("role") == "user"
+            ),
+            "",
+        )
+        gathered = list(packets)
+        for provider in self.context_providers:
+            gathered.extend(provider.get_context(query))
+        result = self.context_builder.build_messages(
+            messages, additional_packets=gathered, tool_schemas=tool_schemas
+        )
+        self.last_context_diagnostics = result.diagnostics
+        return result.messages
 
     def add_tool(self, tool, auto_expand: bool = True) -> None:
         """
@@ -305,6 +439,7 @@ class SimpleAgent(Agent):
         """
         if not self.tool_registry:
             from ..tools.registry import ToolRegistry
+
             self.tool_registry = ToolRegistry()
             self.enable_tool_calling = True
 
@@ -314,8 +449,9 @@ class SimpleAgent(Agent):
 
     def remove_tool(self, tool_name: str) -> bool:
         """移除工具（便利方法）"""
-        if self.tool_registry:
-            return self.tool_registry.unregister_tool(tool_name)
+        if self.tool_registry and tool_name in self.tool_registry.list_tools():
+            self.tool_registry.unregister(tool_name)
+            return True
         return False
 
     def list_tools(self) -> list:
@@ -327,110 +463,3 @@ class SimpleAgent(Agent):
     def has_tools(self) -> bool:
         """检查是否有可用工具"""
         return self.enable_tool_calling and self.tool_registry is not None
-
-    def stream_run(self, input_text: str, **kwargs) -> Iterator[str]:
-        """
-        流式运行Agent
-        
-        Args:
-            input_text: 用户输入
-            **kwargs: 其他参数
-            
-        Yields:
-            Agent响应片段
-        """
-        # 构建消息列表
-        messages = []
-        
-        if self.system_prompt:
-            messages.append({"role": "system", "content": self.system_prompt})
-        
-        for msg in self._history:
-            messages.append({"role": msg.role, "content": msg.content})
-        
-        messages.append({"role": "user", "content": input_text})
-        
-        # 流式调用LLM
-        full_response = ""
-        for chunk in self.llm.stream_invoke(messages, **kwargs):
-            full_response += chunk
-            yield chunk
-        
-        # 保存完整对话到历史记录
-        self.add_message(Message(input_text, "user"))
-        self.add_message(Message(full_response, "assistant"))
-
-    async def arun_stream(
-        self,
-        input_text: str,
-        on_start: LifecycleHook = None,
-        on_finish: LifecycleHook = None,
-        on_error: LifecycleHook = None,
-        **kwargs
-    ) -> AsyncGenerator[StreamEvent, None]:
-        """
-        SimpleAgent 真正的流式执行
-
-        实时返回 LLM 输出的每个文本块
-
-        Args:
-            input_text: 用户输入
-            on_start: 开始钩子
-            on_finish: 完成钩子
-            on_error: 错误钩子
-            **kwargs: 其他参数
-
-        Yields:
-            StreamEvent: 流式事件
-        """
-        # 发送开始事件
-        yield StreamEvent.create(
-            StreamEventType.AGENT_START,
-            self.name,
-            input_text=input_text
-        )
-
-        try:
-            # 构建消息列表
-            messages = []
-
-            if self.system_prompt:
-                messages.append({"role": "system", "content": self.system_prompt})
-
-            for msg in self._history:
-                messages.append({"role": msg.role, "content": msg.content})
-
-            messages.append({"role": "user", "content": input_text})
-
-            # LLM 流式调用
-            full_response = ""
-            async for chunk in self.llm.astream_invoke(messages, **kwargs):
-                full_response += chunk
-
-                # 发送 LLM 输出块
-                yield StreamEvent.create(
-                    StreamEventType.LLM_CHUNK,
-                    self.name,
-                    chunk=chunk
-                )
-
-            # 发送完成事件
-            yield StreamEvent.create(
-                StreamEventType.AGENT_FINISH,
-                self.name,
-                result=full_response
-            )
-
-            # 保存到历史
-            self.add_message(Message(input_text, "user"))
-            self.add_message(Message(full_response, "assistant"))
-
-        except Exception as e:
-            # 发送错误事件
-            yield StreamEvent.create(
-                StreamEventType.ERROR,
-                self.name,
-                error=str(e),
-                error_type=type(e).__name__
-            )
-            raise

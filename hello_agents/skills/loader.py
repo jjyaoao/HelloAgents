@@ -16,6 +16,7 @@ from dataclasses import dataclass
 @dataclass
 class Skill:
     """技能数据类"""
+
     name: str
     description: str
     body: str
@@ -80,13 +81,14 @@ class SkillLoader:
 
         # 仅元数据缓存（启动时加载）
         self.metadata_cache: Dict[str, Dict] = {}
+        self.diagnostics: List[Dict[str, str]] = []
 
         # 启动时扫描并加载元数据
         self._scan_skills()
 
     def _scan_skills(self):
         """扫描 skills/ 目录，加载元数据"""
-        for skill_dir in self.skills_dir.iterdir():
+        for skill_dir in sorted(self.skills_dir.iterdir()):
             if not skill_dir.is_dir():
                 continue
 
@@ -100,11 +102,14 @@ class SkillLoader:
                 continue
 
             name = metadata.get("name", skill_dir.name)
+            if name in self.metadata_cache:
+                self._diagnose(skill_md, f"重复的技能名称 {name}，保留先扫描的定义")
+                continue
             self.metadata_cache[name] = {
                 "name": name,
                 "description": metadata.get("description", ""),
                 "path": skill_md,
-                "dir": skill_dir
+                "dir": skill_dir,
             }
 
     def _parse_frontmatter_only(self, path: Path) -> Optional[Dict]:
@@ -117,26 +122,41 @@ class SkillLoader:
             解析后的元数据字典，如果解析失败则返回 None
         """
         try:
-            content = path.read_text(encoding='utf-8')
-        except Exception:
+            content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            self._diagnose(path, f"无法读取技能文件: {exc}")
             return None
 
         # 匹配 --- 分隔符之间的内容
-        match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
 
         if not match:
+            self._diagnose(path, "缺少有效的 YAML frontmatter")
             return None
 
         yaml_str = match.group(1)
 
-        # 解析 YAML
+        return self._parse_metadata(yaml_str, path)
+
+    def _diagnose(self, path: Path, message: str):
+        self.diagnostics.append({"path": str(path), "message": message})
+
+    def _parse_metadata(self, yaml_str: str, path: Path) -> Optional[Dict]:
+        """扫描与按需加载共用的结构校验；错误隔离到单个 Skill。"""
         try:
             metadata = yaml.safe_load(yaml_str) or {}
-        except yaml.YAMLError:
+        except yaml.YAMLError as exc:
+            self._diagnose(path, f"YAML 解析失败: {exc}")
             return None
 
-        # 验证必需字段
-        if "name" not in metadata or "description" not in metadata:
+        if not isinstance(metadata, dict):
+            self._diagnose(path, "frontmatter 必须是包含 name 和 description 的对象")
+            return None
+        if not all(
+            isinstance(metadata.get(key), str) and metadata[key].strip()
+            for key in ("name", "description")
+        ):
+            self._diagnose(path, "name 和 description 必须是非空字符串")
             return None
 
         return metadata
@@ -165,6 +185,8 @@ class SkillLoader:
         Returns:
             Skill 对象，如果不存在则返回 None
         """
+        if not isinstance(name, str) or not name.strip():
+            return None
         # 检查缓存
         if name in self.skills_cache:
             return self.skills_cache[name]
@@ -177,22 +199,26 @@ class SkillLoader:
 
         # 读取完整内容
         try:
-            content = metadata["path"].read_text(encoding='utf-8')
-        except Exception:
+            content = metadata["path"].read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            self._diagnose(metadata["path"], f"无法读取技能文件: {exc}")
             return None
 
         # 提取 frontmatter 和 body
-        match = re.match(r'^---\s*\n(.*?)\n---\s*\n(.*)$', content, re.DOTALL)
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
 
         if not match:
+            self._diagnose(metadata["path"], "缺少有效的 YAML frontmatter")
             return None
 
         frontmatter, body = match.groups()
 
         # 解析 frontmatter（验证一致性）
-        try:
-            parsed_metadata = yaml.safe_load(frontmatter) or {}
-        except yaml.YAMLError:
+        parsed_metadata = self._parse_metadata(frontmatter, metadata["path"])
+        if parsed_metadata is None:
+            return None
+        if parsed_metadata["name"] != name:
+            self._diagnose(metadata["path"], "技能名称自扫描后发生改变，请先 reload")
             return None
 
         # 创建 Skill 对象
@@ -201,7 +227,7 @@ class SkillLoader:
             description=parsed_metadata.get("description", ""),
             body=body.strip(),
             path=metadata["path"],
-            dir=metadata["dir"]
+            dir=metadata["dir"],
         )
 
         # 缓存
@@ -221,5 +247,5 @@ class SkillLoader:
         """重新扫描技能目录（热重载）"""
         self.skills_cache.clear()
         self.metadata_cache.clear()
+        self.diagnostics.clear()
         self._scan_skills()
-

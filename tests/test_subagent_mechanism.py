@@ -23,7 +23,7 @@ class MockReadTool(Tool):
         super().__init__(name="Read", description="读取文件")
     
     def get_parameters(self) -> List[ToolParameter]:
-        return [ToolParameter(name="path", type="string", required=True)]
+        return [ToolParameter(name="path", type="string", description="测试参数", required=True)]
     
     def run(self, parameters: Dict[str, Any]) -> ToolResponse:
         return ToolResponse.success(text="文件内容")
@@ -36,7 +36,7 @@ class MockWriteTool(Tool):
         super().__init__(name="Write", description="写入文件")
     
     def get_parameters(self) -> List[ToolParameter]:
-        return [ToolParameter(name="path", type="string", required=True)]
+        return [ToolParameter(name="path", type="string", description="测试参数", required=True)]
     
     def run(self, parameters: Dict[str, Any]) -> ToolResponse:
         return ToolResponse.success(text="写入成功")
@@ -49,7 +49,7 @@ class MockBashTool(Tool):
         super().__init__(name="Bash", description="执行命令")
     
     def get_parameters(self) -> List[ToolParameter]:
-        return [ToolParameter(name="command", type="string", required=True)]
+        return [ToolParameter(name="command", type="string", description="测试参数", required=True)]
     
     def run(self, parameters: Dict[str, Any]) -> ToolResponse:
         return ToolResponse.success(text="命令执行")
@@ -67,6 +67,7 @@ class MockSimpleAgent(Agent):
     def run(self, input_text: str, **kwargs) -> str:
         """简单返回输入"""
         self.run_count += 1
+        self.tools_during_run = self.tool_registry.list_tools() if self.tool_registry else []
         
         # 模拟添加历史
         self.add_message(Message(role="user", content=input_text))
@@ -137,8 +138,10 @@ class TestAgentRunAsSubagent:
     def test_tool_filter_readonly(self):
         """测试只读工具过滤"""
         llm = HelloAgentsLLM(provider="openai", model="gpt-3.5-turbo")
-        # 禁用 skills 和 subagent 自动注册
-        config = Config(subagent_enabled=False, skills_enabled=False)
+        # 只检查三个人工工具，关闭与本测试无关的默认装配。
+        config = Config(subagent_enabled=False, skills_enabled=False,
+                        todowrite_enabled=False, devlog_enabled=False,
+                        trace_enabled=False, session_enabled=False)
 
         # 创建工具注册表
         registry = ToolRegistry()
@@ -159,9 +162,12 @@ class TestAgentRunAsSubagent:
             tool_filter=tool_filter
         )
 
+        assert result["success"] is True
+        assert agent.tools_during_run == ["Read"]
+
         # 验证执行后工具列表恢复
         final_tools = registry.list_tools()
-        assert len(final_tools) == 3
+        assert final_tools == initial_tools
         assert "Read" in final_tools
         assert "Write" in final_tools
         assert "Bash" in final_tools
@@ -169,8 +175,10 @@ class TestAgentRunAsSubagent:
     def test_tool_filter_full_access(self):
         """测试完全访问过滤器"""
         llm = HelloAgentsLLM(provider="openai", model="gpt-3.5-turbo")
-        # 禁用 skills 和 subagent 自动注册
-        config = Config(subagent_enabled=False, skills_enabled=False)
+        # 只检查三个人工工具，关闭与本测试无关的默认装配。
+        config = Config(subagent_enabled=False, skills_enabled=False,
+                        todowrite_enabled=False, devlog_enabled=False,
+                        trace_enabled=False, session_enabled=False)
 
         registry = ToolRegistry()
         registry.register_tool(MockReadTool())
@@ -191,10 +199,11 @@ class TestAgentRunAsSubagent:
 
         # 验证执行成功
         assert result["success"] is True
+        assert agent.tools_during_run == ["Read", "Write"]
 
         # 验证执行后工具列表恢复
         final_tools = registry.list_tools()
-        assert len(final_tools) == 3
+        assert final_tools == initial_tools
     
     def test_return_full_result(self):
         """测试返回完整结果（而非摘要）"""

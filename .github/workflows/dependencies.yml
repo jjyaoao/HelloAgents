@@ -1,0 +1,89 @@
+name: Dependency consistency
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  locked-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            python: '3.13'
+            installer: uv
+          - os: windows-latest
+            python: '3.12'
+            installer: uv
+          - os: ubuntu-latest
+            python: '3.13'
+            installer: pip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install uv==0.12.23
+      - run: uv lock --check --python ${{ matrix.python }}
+      - if: matrix.installer == 'uv'
+        run: uv sync --locked --all-extras --python ${{ matrix.python }}
+      - if: matrix.installer == 'uv'
+        run: uv run --locked --all-extras --python ${{ matrix.python }} python scripts/sync_requirements.py --check
+      - if: matrix.installer == 'uv'
+        run: uv pip check
+      - if: matrix.installer == 'uv'
+        run: uv run --locked --all-extras --python ${{ matrix.python }} python -m pytest
+      - if: matrix.installer == 'pip'
+        run: python -m pip install -r requirements/all.txt
+      - if: matrix.installer == 'pip'
+        run: python scripts/sync_requirements.py --check
+      - if: matrix.installer == 'pip'
+        run: python -m pip check
+      - if: matrix.installer == 'pip'
+        run: python -m pytest
+      - if: matrix.installer == 'pip'
+        run: python scripts/check_distribution.py
+  minimal-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: macos-latest
+            python: '3.13'
+          - os: ubuntu-latest
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install uv==0.12.23
+      - run: uv sync --locked --extra test --python ${{ matrix.python }}
+      - run: uv run --locked --extra test --python ${{ matrix.python }} python -m pytest tests/test_public_hardening.py tests/test_maintenance_budget_evaluation.py tests/test_dependency_contract.py tests/test_runtime_contract.py tests/test_agent_state_boundaries.py
+      - run: uv pip check
+  release-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install uv==0.12.23
+      - run: uv sync --locked --all-extras --group quality
+      - run: uv run --locked --all-extras --group quality ruff check hello_agents tests examples scripts
+      - run: uv run --locked --all-extras --group quality coverage run -m pytest
+      - run: uv run --locked --all-extras --group quality coverage report
+      - run: uv run --locked --all-extras --group quality python scripts/check_concurrency.py --jobs 200 --workers 4
+      - run: uv run --locked --all-extras --group quality python scripts/check_security.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-quality-evidence
+          path: |
+            .coverage
+            security-report.json
+            concurrency-report.json
+          include-hidden-files: true

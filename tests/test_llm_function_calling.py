@@ -316,13 +316,14 @@ def test_gemini_converts_openai_tool_history_messages():
 class TestLLMFunctionCallingIntegration:
     """集成测试 - 需要真实 LLM"""
 
-    @pytest.mark.skip(reason="需要真实 LLM 环境")
-    def test_real_function_calling(self):
+    @pytest.mark.live
+    def test_real_function_calling(self, live_llm_config):
         """测试真实的 Function Calling"""
-        llm = HelloAgentsLLM()
+        llm = HelloAgentsLLM(**live_llm_config)
         response = llm.invoke_with_tools(
-            [{"role": "user", "content": "帮我计算 15 * 8"}],
+            [{"role": "user", "content": "必须调用 calculate 工具计算 15 * 8，不要自行计算。"}],
             _tool_schema(),
+            tool_choice="auto",
         )
 
         assert response.tool_calls

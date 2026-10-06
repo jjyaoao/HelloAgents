@@ -119,7 +119,7 @@ class TestTraceLogger:
         with open(jsonl_path, 'r', encoding='utf-8') as f:
             event = json.loads(f.read())
             payload_str = json.dumps(event["payload"])
-            assert "sk-***" in payload_str
+            assert event["payload"]["api_key"] == "[REDACTED]"
             assert "Bearer ***" in payload_str
             assert "1234567890abcdef" not in payload_str
             assert "token_secret_123" not in payload_str

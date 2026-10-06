@@ -10,6 +10,8 @@
 import json
 import os
 import uuid
+import tempfile
+from threading import Lock
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -54,6 +56,7 @@ class SessionStore:
         """
         self.session_dir = Path(session_dir)
         self.session_dir.mkdir(parents=True, exist_ok=True)
+        self._write_lock = Lock()
     
     def _generate_session_id(self) -> str:
         """生成唯一的会话 ID
@@ -93,7 +96,8 @@ class SessionStore:
         session_id = self._generate_session_id()
 
         # 生成文件名
-        if session_name:
+        if session_name is not None:
+            self._validate_name(session_name)
             filename = f"{session_name}.json"
         else:
             filename = f"session-{session_id}.json"
@@ -116,12 +120,21 @@ class SessionStore:
         }
         
         # 原子写入（临时文件 + 重命名）
-        temp_path = str(filepath) + ".tmp"
-        with open(temp_path, 'w', encoding='utf-8') as f:
-            json.dump(session_data, f, indent=2, ensure_ascii=False)
-        
-        # 原子重命名
-        os.replace(temp_path, filepath)
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.session_dir,
+                prefix=".session-", suffix=".tmp", delete=False,
+            ) as f:
+                temp_path = Path(f.name)
+                json.dump(session_data, f, indent=2, ensure_ascii=False)
+            # Windows 可能拒绝同时替换同一目标文件。
+            # 共享此存储的写入方只对原子替换步骤串行执行。
+            with self._write_lock:
+                os.replace(temp_path, filepath)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
         
         return str(filepath)
     
@@ -181,11 +194,18 @@ class SessionStore:
         Returns:
             是否删除成功
         """
+        self._validate_name(session_name)
         filepath = self.session_dir / f"{session_name}.json"
         if filepath.exists():
             os.remove(filepath)
             return True
         return False
+
+    @staticmethod
+    def _validate_name(name: str) -> None:
+        if (not isinstance(name, str) or not name.strip()
+                or name in {".", ".."} or any(c in name for c in '/\\:')):
+            raise ValueError("session_name 必须是名称，不能包含目录或路径分隔符")
 
     def check_config_consistency(
         self,

@@ -3,12 +3,16 @@ include README.md
 include LICENSE
 include requirements.txt
 include pyproject.toml
+include uv.lock
+include .python-version
+recursive-include requirements *.txt
+recursive-include scripts *.py
 
 # 包含文档
 recursive-include docs *.md *.rst *.txt
 
 # 包含示例（可选）
-recursive-include examples *.py *.md
+recursive-include examples *.py *.md *.html
 
 # 排除不需要的文件
 exclude .gitignore

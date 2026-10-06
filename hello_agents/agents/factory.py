@@ -26,7 +26,7 @@ def create_agent(
         agent_type: Agent 类型，支持：
             - "react": ReActAgent（推理-行动循环）
             - "reflection": ReflectionAgent（反思型）
-            - "plan": PlanAndSolveAgent（规划-执行）
+            - "plan": PlanSolveAgent（规划-执行）
             - "simple": SimpleAgent（简单对话）
         name: Agent 名称
         llm: LLM 实例
@@ -77,6 +77,7 @@ def create_agent(
         return SimpleAgent(
             name=name,
             llm=llm,
+            tool_registry=tool_registry,
             config=config,
             system_prompt=system_prompt
         )
@@ -108,6 +109,12 @@ def default_subagent_factory(
         配置好的子代理实例
     """
     config = config or Config()
+    config = config.model_copy(update={"subagent_enabled": False, "auto_save_enabled": False})
+    if tool_registry is not None:
+        tool_registry = tool_registry.fork(
+            name for name in tool_registry.list_tools()
+            if name not in {"Task", "Skill", "TodoWrite", "DevLog"}
+        )
     
     # 子代理名称
     name = f"subagent-{agent_type}"
@@ -128,6 +135,8 @@ def default_subagent_factory(
     # 配置子代理特定参数
     if hasattr(subagent, 'max_steps'):
         subagent.max_steps = config.subagent_max_steps
+    if hasattr(subagent, 'max_tool_iterations'):
+        subagent.max_tool_iterations = config.subagent_max_steps
     
     return subagent
 

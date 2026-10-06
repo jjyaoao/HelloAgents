@@ -67,6 +67,17 @@ class ToolResponse:
     def to_json(self) -> str:
         """转换为 JSON 字符串"""
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+
+    def to_model_text(self) -> str:
+        """模型可见表示：结构化数据保留来源与状态，纯文本响应保持兼容。"""
+        if self.data:
+            return self.to_json()
+        if self.status == ToolStatus.ERROR:
+            code = self.error_info.get("code", "UNKNOWN") if self.error_info else "UNKNOWN"
+            return f"❌ 错误 [{code}]: {self.text}"
+        if self.status == ToolStatus.PARTIAL:
+            return f"⚠️ 部分成功: {self.text}"
+        return self.text
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ToolResponse':

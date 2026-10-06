@@ -421,6 +421,10 @@ class TestOptimisticLocking:
         })
         assert edit_b.status == ToolStatus.SUCCESS
 
+        # 接口比较毫秒时间戳；显式制造版本变化，避免依赖机器执行速度。
+        next_mtime = cached_b["file_mtime_ms"] / 1000 + 1
+        os.utime(test_file, (next_mtime, next_mtime))
+
         # Agent A 尝试修改（应该失败）
         edit_tool_a = EditTool(project_root=str(temp_workspace), registry=registry_a)
         cached_a = registry_a.get_read_metadata("shared.txt")

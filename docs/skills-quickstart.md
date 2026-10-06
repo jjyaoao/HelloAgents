@@ -1,134 +1,38 @@
-# Skills 快速开始
+# Agent Skill 快速开始
 
-> 3 分钟上手 Skills 知识外化系统
+Agent Skill 将某类任务的操作说明放在 `SKILL.md` 中。加载器先读取名称与用途，模型需要时再通过 `Skill` 工具取得正文。这里演示文件加载，不调用模型。
 
----
+## 创建并加载
 
-## 什么是 Skills？
-
-Skills 让 Agent 按需加载领域知识，无需修改代码，节省 85% Token。
-
----
-
-## 快速开始
-
-### 1. 创建技能目录
-
-```bash
-mkdir skills
-```
-
-### 2. 创建技能文件
-
-创建 `skills/pdf/SKILL.md`：
-
-```markdown
----
-name: pdf
-description: Process PDF files. Use when reading, creating, or merging PDFs.
----
-
-# PDF Processing Skill
-
-## Reading PDFs
-Use pdftotext: `pdftotext input.pdf -`
-
-## Creating PDFs
-Use pandoc: `pandoc input.md -o output.pdf`
-
-$ARGUMENTS
-```
-
-### 3. 使用 Agent
+从源码根目录安装 `python -m pip install -r requirements.txt`，执行：
 
 ```python
-from hello_agents import ReActAgent, HelloAgentsLLM
-from hello_agents.tools import ToolRegistry
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from hello_agents.skills import SkillLoader
+from hello_agents.tools.builtin import SkillTool
+from hello_agents.tools.response import ToolStatus
 
-# 创建 Agent（自动检测 skills/ 目录）
-agent = ReActAgent(
-    name="assistant",
-    llm=HelloAgentsLLM(provider="openai", model="gpt-4"),
-    tool_registry=ToolRegistry()
-)
-
-# Agent 会自动加载 pdf 技能
-result = agent.run("帮我提取 report.pdf 的文本内容")
+with TemporaryDirectory() as directory:
+    skill_dir = Path(directory) / "travel-check"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: travel-check\ndescription: 核对旅行计划的预约与步行约束\n---\n"
+        "先核对 $ARGUMENTS 的预约要求，再计算各日步行距离。\n",
+        encoding="utf-8",
+    )
+    loader = SkillLoader(Path(directory))
+    assert loader.list_skills() == ["travel-check"]
+    assert "核对旅行计划" in loader.get_descriptions()
+    tool = SkillTool(loader)
+    reply = tool.run({"skill": "travel-check", "args": "博物馆"})
+    assert reply.status == ToolStatus.SUCCESS
+    assert "博物馆" in reply.text
+    print(reply.text)
 ```
 
-**完成！** 🎉
+结果包含完整说明及可用资源提示。`$ARGUMENTS` 是文本替换位置；它不会执行命令。生产应用应把 Skill 放在持久目录，再将 `SkillTool(loader)` 注册到代理的工具注册表。
 
----
+## 下一步
 
-## 核心优势
-
-- ✅ **零配置**：创建 `skills/` 目录即可
-- ✅ **按需加载**：节省 85% Token
-- ✅ **人类可编辑**：纯文本 Markdown
-- ✅ **团队协作**：Git 友好
-
----
-
-## 目录结构
-
-```
-your-project/
-├── skills/              # ← 创建这个目录
-│   ├── pdf/
-│   │   └── SKILL.md    # ← 技能定义
-│   ├── code-review/
-│   │   └── SKILL.md
-│   └── mcp-builder/
-│       └── SKILL.md
-└── main.py
-```
-
----
-
-## SKILL.md 格式
-
-```markdown
----
-name: 技能名称
-description: 简短描述（< 100 字符）
----
-
-# 技能标题
-
-详细内容...
-
-$ARGUMENTS
-```
-
-**必需字段**：
-- `name`：技能名称
-- `description`：简短描述
-
----
-
-## 配置选项
-
-```python
-from hello_agents import Config
-
-config = Config(
-    skills_enabled=True,           # 是否启用（默认 True）
-    skills_dir="skills",           # 技能目录（默认 "skills"）
-    skills_auto_register=True      # 自动注册（默认 True）
-)
-```
-
----
-
-## 检查激活状态
-
-```bash
-python examples/check_skills_activation.py
-```
-
----
-
-## 更多信息
-
-查看完整文档：[Skills 使用指南](./skills-usage-guide.md)
-
+阅读 [Skills 使用指南](skills-usage-guide.md) 了解目录、刷新与组合方式；阅读 [组件组合](component-composition-guide.md) 将加载器注入 Agent。完整离线运行示例使用 `python -X utf8 -m examples.agents.runtime_features`。

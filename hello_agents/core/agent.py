@@ -6,6 +6,8 @@ import asyncio
 from .message import Message
 from .llm import HelloAgentsLLM
 from .config import Config
+from .budget import BudgetExceeded
+from .components import AgentComponents, build_agent_components, register_default_tools
 from .lifecycle import AgentEvent, EventType, LifecycleHook, ExecutionContext
 
 if TYPE_CHECKING:
@@ -24,9 +26,7 @@ class Agent(ABC):
     - ToolRegistry: 工具管理（可选）
     - SkillLoader: 知识外化（可选）
 
-    向后兼容：
-    - self._history 属性仍然可用（通过 property 代理）
-    - add_message/clear_history/get_history 方法保持不变
+    历史由 HistoryManager 管理，通过 add_message、clear_history、get_history 操作。
     """
 
     def __init__(
@@ -35,36 +35,30 @@ class Agent(ABC):
         llm: HelloAgentsLLM,
         system_prompt: Optional[str] = None,
         config: Optional[Config] = None,
-        tool_registry: Optional['ToolRegistry'] = None
+        tool_registry: Optional['ToolRegistry'] = None,
+        components: Optional[AgentComponents] = None
     ):
         self.name = name
         self.llm = llm
         self.system_prompt = system_prompt
         self.config = config or Config()
+        self._component_options = components
+        if any((self.config.summary_llm_provider, self.config.summary_llm_model, self.config.subagent_light_llm_provider, self.config.subagent_light_llm_model)):
+            raise ValueError("独立摘要或子代理模型请通过 AgentComponents 注入完整 LLM 实例")
 
         # 工具注册表（可选）
         self.tool_registry = tool_registry
 
-        # 新增：上下文工程组件
-        from hello_agents.context.history import HistoryManager
-        from hello_agents.context.truncator import ObservationTruncator
-
-        self.history_manager = HistoryManager(
-            min_retain_rounds=self.config.min_retain_rounds,
-            compression_threshold=self.config.compression_threshold
+        # 显式注入与默认装配共用一个入口；保留公开组件属性。
+        self.components = build_agent_components(self.config, self.llm.model, components)
+        self.history_manager = self.components.history_manager
+        self.token_counter = self.components.token_counter
+        self.truncator = self.components.truncator
+        self.session_store = self.components.session_store
+        self.skill_loader = self.components.skill_loader
+        self._history_token_count = self.token_counter.count_messages(
+            self.history_manager.get_history()
         )
-
-        self.truncator = ObservationTruncator(
-            max_lines=self.config.tool_output_max_lines,
-            max_bytes=self.config.tool_output_max_bytes,
-            truncate_direction=self.config.tool_output_truncate_direction,
-            output_dir=self.config.tool_output_dir
-        )
-
-        # 新增：Token 计数器（缓存 + 增量计算）
-        from ..context.token_counter import TokenCounter
-        self.token_counter = TokenCounter(model=self.llm.model)
-        self._history_token_count = 0  # 缓存历史 Token 数
 
         # 新增：可观测性组件
         from hello_agents.observability import TraceLogger
@@ -86,28 +80,7 @@ class Agent(ABC):
                 }
             )
 
-        # 新增：Skills 知识外化组件
-        from pathlib import Path
-        from hello_agents.skills import SkillLoader
-
-        self.skill_loader: Optional[SkillLoader] = None
-        if self.config.skills_enabled:
-            skills_path = Path(self.config.skills_dir)
-            self.skill_loader = SkillLoader(skills_dir=skills_path)
-
-            # 自动注册 SkillTool
-            if self.config.skills_auto_register and self.tool_registry:
-                from hello_agents.tools.builtin.skill_tool import SkillTool
-                skill_tool = SkillTool(skill_loader=self.skill_loader)
-                self.tool_registry.register_tool(skill_tool)
-
-        # 新增：会话持久化组件
         from datetime import datetime
-        from .session_store import SessionStore
-
-        self.session_store: Optional[SessionStore] = None
-        if self.config.session_enabled:
-            self.session_store = SessionStore(session_dir=self.config.session_dir)
 
         # 会话元数据（用于保存）
         self._session_metadata = {
@@ -118,29 +91,22 @@ class Agent(ABC):
         }
         self._start_time = datetime.now()
 
-        # 新增：子代理机制组件
-        if self.config.subagent_enabled and self.tool_registry:
-            self._register_task_tool()
-
-        # 新增：TodoWrite 进度管理组件
-        if self.config.todowrite_enabled and self.tool_registry:
-            self._register_todowrite_tool()
-
-        # 新增：DevLog 开发日志组件
-        if self.config.devlog_enabled and self.tool_registry:
-            self._register_devlog_tool()
+        register_default_tools(self)
 
     @property
     def _history(self) -> List[Message]:
-        """向后兼容：通过 property 代理到 HistoryManager"""
+        """访问 HistoryManager 的当前历史。"""
         return self.history_manager.get_history()
 
     @_history.setter
     def _history(self, value: List[Message]):
-        """向后兼容：允许直接设置历史"""
+        """替换完整历史并重新计算 Token 数。"""
         self.history_manager.clear()
         for msg in value:
             self.history_manager.append(msg)
+        self._history_token_count = self.token_counter.count_messages(
+            self.history_manager.get_history()
+        )
 
     @abstractmethod
     def run(self, input_text: str, **kwargs) -> str:
@@ -188,11 +154,7 @@ class Agent(ABC):
 
         try:
             # 默认实现：在线程池中运行同步 run()
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.run(input_text, **kwargs)
-            )
+            result = await asyncio.to_thread(self.run, input_text, **kwargs)
 
             # 触发完成事件
             await self._emit_event(
@@ -313,7 +275,7 @@ class Agent(ABC):
             self._compress_history()
 
         # 自动保存（如果启用）
-        if self.config.auto_save_enabled and self.session_store:
+        if self.config.auto_save_enabled and self.session_store is not None:
             history_len = len(self.history_manager.get_history())
             if history_len % self.config.auto_save_interval == 0:
                 self._auto_save()
@@ -380,7 +342,7 @@ class Agent(ABC):
 - 助手消息：{assistant_msgs} 条
 - 总消息数：{len(history)} 条
 
-（历史已压缩，保留最近 {self.config.min_retain_rounds} 轮完整对话）"""
+（历史已压缩，保留最近 {self.history_manager.min_retain_rounds} 轮完整对话）"""
 
     def _generate_smart_summary(self, history: List[Message]) -> str:
         """生成智能摘要（调用 LLM）
@@ -400,11 +362,11 @@ class Agent(ABC):
         """
         # 1. 提取要压缩的历史片段
         boundaries = self.history_manager.find_round_boundaries()
-        if len(boundaries) <= self.config.min_retain_rounds:
+        if len(boundaries) <= self.history_manager.min_retain_rounds:
             return self._generate_simple_summary(history)
 
         # 保留最近 N 轮，压缩之前的
-        keep_from_index = boundaries[-self.config.min_retain_rounds]
+        keep_from_index = boundaries[-self.history_manager.min_retain_rounds]
         to_compress = history[:keep_from_index]
 
         if not to_compress:
@@ -443,11 +405,17 @@ class Agent(ABC):
                 max_tokens=self.config.summary_max_tokens
             )
 
+            summary = getattr(summary, "content", summary)
+            if not isinstance(summary, str) or not summary.strip():
+                raise ValueError("摘要模型未返回非空文本")
             return f"""## 历史摘要（{len(to_compress)} 条消息）
 {summary}
 
 ---
-（已压缩，保留最近 {self.config.min_retain_rounds} 轮完整对话）"""
+（已压缩，保留最近 {self.history_manager.min_retain_rounds} 轮完整对话）"""
+
+        except BudgetExceeded:
+            raise
 
         except Exception as e:
             # 回退到简单摘要
@@ -472,28 +440,12 @@ class Agent(ABC):
         return "\n\n".join(formatted_lines)
 
     def _get_summary_llm(self):
-        """获取摘要专用 LLM（轻量模型）
-
-        使用独立的轻量 LLM 实例，节省成本
-
-        Returns:
-            HelloAgentsLLM 实例
-        """
-        if not hasattr(self, '_summary_llm'):
-            from ..core.llm import HelloAgentsLLM
-
-            # 使用配置中的轻量模型
-            provider = self.config.summary_llm_provider
-            model = self.config.summary_llm_model
-
-            self._summary_llm = HelloAgentsLLM(
-                provider=provider,
-                model=model,
-                temperature=self.config.summary_temperature,
-                max_tokens=self.config.summary_max_tokens
-            )
-
-        return self._summary_llm
+        injected = getattr(self._component_options, "summary_llm", None)
+        if injected is not None:
+            return injected
+        if self.config.summary_llm_provider or self.config.summary_llm_model:
+            raise ValueError("独立摘要模型请通过 AgentComponents(summary_llm=...) 注入完整配置")
+        return self.llm
 
     def __str__(self) -> str:
         return f"Agent(name={self.name}, model={self.llm.model})"
@@ -518,40 +470,9 @@ class Agent(ABC):
 
         schemas: List[Dict[str, Any]] = []
 
-        # 1. 处理 Tool 对象
+        # 完整的 Schema 由工具提供，声明无效时必须明确报错。
         for tool in self.tool_registry.get_all_tools():
-            properties: Dict[str, Any] = {}
-            required: List[str] = []
-
-            try:
-                parameters = tool.get_parameters()
-            except Exception:
-                parameters = []
-
-            for param in parameters:
-                properties[param.name] = {
-                    "type": self._map_parameter_type(param.type),
-                    "description": param.description or ""
-                }
-                if param.default is not None:
-                    properties[param.name]["default"] = param.default
-                if getattr(param, "required", True):
-                    required.append(param.name)
-
-            schema: Dict[str, Any] = {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties
-                    }
-                }
-            }
-            if required:
-                schema["function"]["parameters"]["required"] = required
-            schemas.append(schema)
+            schemas.append(tool.to_openai_schema())
 
         # 2. 处理函数工具
         function_map = getattr(self.tool_registry, "_functions", {})
@@ -661,51 +582,23 @@ class Agent(ABC):
         if not self.tool_registry:
             return "❌ 错误：未配置工具注册表"
 
-        # 1. 尝试执行 Tool 对象
-        tool = self.tool_registry.get_tool(tool_name)
-        if tool:
-            try:
-                typed_arguments = self._convert_parameter_types(tool_name, arguments)
-                response = tool.run_with_timing(typed_arguments)
-
-                # 根据状态添加前缀
-                from ..tools.response import ToolStatus
-                if response.status == ToolStatus.ERROR:
-                    error_code = response.error_info.get("code", "UNKNOWN") if response.error_info else "UNKNOWN"
-                    return f"❌ 错误 [{error_code}]: {response.text}"
-                elif response.status == ToolStatus.PARTIAL:
-                    return f"⚠️ 部分成功: {response.text}"
-                else:
-                    return response.text
-            except Exception as exc:
-                return f"❌ 工具调用失败：{exc}"
-
-        # 2. 尝试执行函数工具
-        func = self.tool_registry.get_function(tool_name)
-        if func:
-            try:
-                input_text = arguments.get("input", "")
-                response = self.tool_registry.execute_tool(tool_name, input_text)
-
-                # 根据状态添加前缀
-                from ..tools.response import ToolStatus
-                if response.status == ToolStatus.ERROR:
-                    error_code = response.error_info.get("code", "UNKNOWN") if response.error_info else "UNKNOWN"
-                    return f"❌ 错误 [{error_code}]: {response.text}"
-                elif response.status == ToolStatus.PARTIAL:
-                    return f"⚠️ 部分成功: {response.text}"
-                else:
-                    return response.text
-            except Exception as exc:
-                return f"❌ 工具调用失败：{exc}"
-
-        return f"❌ 错误：未找到工具 '{tool_name}'"
+        try:
+            tool = self.tool_registry.get_tool(tool_name)
+            if tool:
+                parameters = self._convert_parameter_types(tool_name, arguments)
+            else:
+                # 保留现有函数工具的单 input 调用约定。
+                parameters = arguments.get("input", "")
+            response = self.tool_registry.execute_tool(tool_name, parameters)
+            return response.to_model_text()
+        except Exception as exc:
+            return f"❌ 工具调用失败：{exc}"
 
     # ==================== 会话持久化能力 ====================
 
     def _auto_save(self):
         """自动保存会话（静默失败）"""
-        if not self.session_store:
+        if self.session_store is None:
             return
 
         try:
@@ -734,8 +627,8 @@ class Agent(ABC):
         Raises:
             RuntimeError: 会话持久化未启用
         """
-        if not self.session_store:
-            raise RuntimeError("会话持久化未启用，请在 Config 中设置 session_enabled=True")
+        if self.session_store is None:
+            raise RuntimeError("会话持久化未启用，请使用 Config(session_enabled=True) 或注入 AgentComponents(session_store=...)")
 
         # 更新元数据
         from datetime import datetime
@@ -763,11 +656,21 @@ class Agent(ABC):
             RuntimeError: 会话持久化未启用
             FileNotFoundError: 文件不存在
         """
-        if not self.session_store:
-            raise RuntimeError("会话持久化未启用，请在 Config 中设置 session_enabled=True")
+        if self.session_store is None:
+            raise RuntimeError("会话持久化未启用，请使用 Config(session_enabled=True) 或注入 AgentComponents(session_store=...)")
 
-        # 加载会话数据
+        if getattr(self, "_run_active", False):
+            raise RuntimeError("运行中不能加载另一个会话")
+
+        # 修改当前会话前，先校验完整快照。
         session_data = self.session_store.load(filepath)
+        from .message import Message
+        restored_history = [Message.from_dict(item) for item in session_data.get("history", [])]
+        restored_metadata = session_data.get("metadata", {})
+        restored_cache = session_data.get("read_cache", {})
+        if not isinstance(restored_metadata, dict) or not isinstance(restored_cache, dict):
+            raise ValueError("会话 metadata 和 read_cache 必须是对象")
+        restored_tokens = self.token_counter.count_messages(restored_history)
 
         # 环境一致性检查
         if check_consistency:
@@ -793,17 +696,19 @@ class Agent(ABC):
                 print(f"  建议：{tool_check['recommendation']}")
 
         # 恢复历史
-        from .message import Message
         self.history_manager.clear()
-        for msg_data in session_data.get("history", []):
-            self.history_manager.append(Message.from_dict(msg_data))
+        for message in restored_history:
+            self.history_manager.append(message)
+        self._history_token_count = restored_tokens
 
         # 恢复元数据
-        self._session_metadata = session_data.get("metadata", {})
+        self._session_metadata = restored_metadata
+        if hasattr(self, "_messages_since_save"):
+            self._messages_since_save = 0
 
         # 恢复 Read 工具缓存
-        if self.tool_registry and session_data.get("read_cache"):
-            self.tool_registry.read_metadata_cache = session_data["read_cache"]
+        if self.tool_registry is not None:
+            self.tool_registry.read_metadata_cache = restored_cache
 
         print(f"✅ 会话已恢复：{session_data.get('session_id', 'unknown')}")
 
@@ -813,7 +718,7 @@ class Agent(ABC):
         Returns:
             会话信息列表
         """
-        if not self.session_store:
+        if self.session_store is None:
             return []
 
         return self.session_store.list_sessions()
@@ -838,32 +743,15 @@ class Agent(ABC):
         return config
 
     def _compute_tool_schema_hash(self) -> str:
-        """计算工具 Schema 哈希
-
-        用于检测工具定义是否变化
-
-        Returns:
-            工具 Schema 哈希值（16位）
-        """
-        if not self.tool_registry:
+        """对模型可见的完整接口约定计算哈希，不受注册顺序影响。"""
+        if self.tool_registry is None:
             return "no-tools"
-
         import json
         from hashlib import sha256
 
-        # 收集所有工具的签名
-        tools_signature = {}
-        for tool_name in sorted(self.tool_registry.list_tools()):
-            tool = self.tool_registry.get_tool(tool_name)
-            if tool:
-                tools_signature[tool_name] = {
-                    "name": tool.name,
-                    "description": tool.description[:100] if tool.description else "",
-                    "parameters": list(tool.parameters.keys()) if hasattr(tool, 'parameters') and tool.parameters else []
-                }
-
-        schema_str = json.dumps(tools_signature, sort_keys=True)
-        return sha256(schema_str.encode()).hexdigest()[:16]
+        schemas = sorted(self._build_tool_schemas(), key=lambda schema: schema["function"]["name"])
+        payload = json.dumps(schemas, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        return sha256(payload.encode("utf-8")).hexdigest()[:16]
 
     def _get_read_cache(self) -> Dict[str, Dict]:
         """获取 Read 工具的元数据缓存
@@ -884,158 +772,43 @@ class Agent(ABC):
         return_summary: bool = True,
         max_steps_override: Optional[int] = None
     ) -> Dict[str, Any]:
-        """作为子代理运行（上下文隔离模式）
+        """运行隔离的子会话，随后恢复空闲父 Agent 的状态。
 
-        特性：
-        - 上下文隔离：创建独立的历史记录，不污染主 Agent 上下文
-        - 工具过滤：可选的工具访问控制
-        - 摘要返回：返回结构化摘要而非完整历史
-        - 状态恢复：执行后自动恢复原始状态
-
-        Args:
-            task: 子任务描述
-            tool_filter: 工具过滤器（可选），用于限制可用工具
-            return_summary: 是否返回摘要（True）或完整结果（False）
-            max_steps_override: 覆盖最大步数（可选）
-
-        Returns:
-            {
-                "success": bool,           # 是否成功完成
-                "summary": str,            # 任务摘要（如果 return_summary=True）
-                "result": str,             # 完整结果（如果 return_summary=False）
-                "metadata": {              # 执行元数据
-                    "steps": int,          # 执行步数
-                    "tokens": int,         # 消耗 Token 数（估算）
-                    "duration_seconds": float,  # 执行时长
-                    "tools_used": List[str],    # 使用的工具列表
-                    "error": Optional[str]      # 错误信息（如果失败）
-                }
-            }
+        返回成功标记、元数据，以及摘要或结果。注册表映射
+        与读取缓存相互隔离，但共享工具产生的外部修改不会回滚。
+        不会将子会话内容自动保存到父会话文件。
         """
-        from datetime import datetime
-        import time
+        from time import perf_counter
+        from .subagent_scope import subagent_scope
 
-        # 1. 保存当前状态
-        original_history = self.history_manager.get_history().copy()
-        original_tools = None
-        original_max_steps = None
-
-        # 2. 创建隔离的新历史
-        self.history_manager.clear()
-
-        # 3. 应用工具过滤（如果提供）
-        if tool_filter and self.tool_registry:
-            original_tools = self._apply_tool_filter(tool_filter)
-
-        # 4. 覆盖最大步数（如果提供）
-        if max_steps_override is not None and hasattr(self, 'max_steps'):
-            original_max_steps = self.max_steps
-            self.max_steps = max_steps_override
-
-        # 记录开始时间
-        start_time = time.time()
-        success = False
-        result = ""
-        error_msg = None
-
-        try:
-            # 5. 执行任务
-            result = self.run(task)
-            success = True
-
-        except KeyboardInterrupt:
-            error_msg = "用户中断"
-            raise
-
-        except Exception as e:
-            error_msg = str(e)
-            result = f"执行失败: {error_msg}"
-
-        finally:
-            # 记录执行时长
-            duration = time.time() - start_time
-
-            # 6. 收集元数据
-            metadata = self._get_subagent_metadata(duration, error_msg)
-
-            # 7. 生成摘要（如果需要）
+        with subagent_scope(self, tool_filter, max_steps_override):
+            started = perf_counter()
+            error = None
+            success = False
+            try:
+                result = self.run(task)
+                last_run = getattr(self, "last_run", None)
+                success = last_run is None or last_run.status == "completed"
+                if not success:
+                    error = f"子任务未完成：{last_run.status}"
+            except Exception as exc:
+                error = str(exc)
+                result = f"执行失败: {error}"
+            metadata = self._get_subagent_metadata(perf_counter() - started, error)
             if return_summary:
-                summary = self._generate_subagent_summary(task, result, metadata)
+                return {"success": success,
+                        "summary": self._generate_subagent_summary(task, result, metadata),
+                        "metadata": metadata}
+            return {"success": success, "result": result, "metadata": metadata}
 
-            # 8. 恢复原始状态
-            self.history_manager.clear()
-            for msg in original_history:
-                self.history_manager.append(msg)
+    def _apply_tool_filter(self, tool_filter):
+        """切换到独立的名称映射，不修改调用方的注册表。"""
+        original = self.tool_registry
+        self.tool_registry = original.fork(tool_filter.filter(original.list_tools()))
+        return original
 
-            if original_tools is not None:
-                self._restore_tools(original_tools)
-
-            if original_max_steps is not None:
-                self.max_steps = original_max_steps
-
-        # 9. 返回结果
-        if return_summary:
-            return {
-                "success": success,
-                "summary": summary,
-                "metadata": metadata
-            }
-        else:
-            return {
-                "success": success,
-                "result": result,
-                "metadata": metadata
-            }
-
-    def _apply_tool_filter(self, tool_filter: 'ToolFilter') -> List[str]:
-        """应用工具过滤器
-
-        Args:
-            tool_filter: 工具过滤器实例
-
-        Returns:
-            原始工具列表（用于恢复）
-        """
-        if not self.tool_registry:
-            return []
-
-        # 保存原始工具列表
-        original_tools = self.tool_registry.list_tools()
-
-        # 获取过滤后的工具列表
-        filtered_tools = tool_filter.filter(original_tools)
-
-        # 临时移除不允许的工具
-        for tool_name in original_tools:
-            if tool_name not in filtered_tools:
-                self.tool_registry._temp_disabled_tools = getattr(
-                    self.tool_registry, '_temp_disabled_tools', {}
-                )
-                tool = self.tool_registry.get_tool(tool_name)
-                if tool:
-                    self.tool_registry._temp_disabled_tools[tool_name] = tool
-                    # 从注册表中临时移除
-                    if tool_name in self.tool_registry._tools:
-                        del self.tool_registry._tools[tool_name]
-
-        return original_tools
-
-    def _restore_tools(self, original_tools: List[str]):
-        """恢复原始工具列表
-
-        Args:
-            original_tools: 原始工具名称列表
-        """
-        if not self.tool_registry:
-            return
-
-        # 恢复被禁用的工具
-        if hasattr(self.tool_registry, '_temp_disabled_tools'):
-            for tool_name, tool in self.tool_registry._temp_disabled_tools.items():
-                self.tool_registry._tools[tool_name] = tool
-
-            # 清空临时禁用列表
-            self.tool_registry._temp_disabled_tools = {}
+    def _restore_tools(self, original_tools):
+        self.tool_registry = original_tools
 
     def _get_subagent_metadata(self, duration: float, error: Optional[str]) -> Dict[str, Any]:
         """获取子代理执行元数据
@@ -1083,6 +856,9 @@ class Agent(ABC):
         tools = set()
 
         for msg in history:
+            native = (msg.metadata or {}).get("model_message", {})
+            for call in native.get("tool_calls", []):
+                tools.add(call.get("function", {}).get("name", ""))
             # 检查 tool_calls（FunctionCallAgent）
             if hasattr(msg, 'tool_calls') and msg.tool_calls:
                 for tool_call in msg.tool_calls:
@@ -1135,47 +911,6 @@ class Agent(ABC):
             summary_parts.append(f"错误: {metadata['error']}")
 
         return "\n".join(summary_parts)
-
-    def _register_task_tool(self):
-        """注册 TaskTool（子代理工具）
-
-        自动注册逻辑，在 __init__ 中调用（如果启用）
-        """
-        from ..agents.factory import default_subagent_factory
-        from ..tools.builtin.task_tool import TaskTool
-
-        # 创建 Agent 工厂函数
-        def agent_factory(agent_type: str) -> Agent:
-            """为 TaskTool 创建子代理实例"""
-            # 决定使用哪个 LLM
-            if self.config.subagent_use_light_llm:
-                # 使用轻量模型
-                from ..core.llm import HelloAgentsLLM
-                light_llm = HelloAgentsLLM(
-                    provider=self.config.subagent_light_llm_provider,
-                    model=self.config.subagent_light_llm_model
-                )
-                llm = light_llm
-            else:
-                # 使用主模型
-                llm = self.llm
-
-            # 使用默认工厂创建子代理
-            return default_subagent_factory(
-                agent_type=agent_type,
-                llm=llm,
-                tool_registry=self.tool_registry,
-                config=self.config
-            )
-
-        # 创建并注册 TaskTool
-        task_tool = TaskTool(
-            agent_factory=agent_factory,
-            tool_registry=self.tool_registry,
-            config=self.config
-        )
-
-        self.tool_registry.register_tool(task_tool)
 
     def _register_task_tool(self):
         """注册 TaskTool（子代理工具）
@@ -1257,17 +992,9 @@ class Agent(ABC):
         return f"s-{timestamp}-{random_suffix}"
 
     def _create_light_llm(self) -> HelloAgentsLLM:
-        """创建轻量模型 LLM 实例
-
-        Returns:
-            轻量模型 LLM 实例
-        """
-        # 复用主 LLM 的配置，但使用轻量模型
-        light_llm = HelloAgentsLLM(
-            provider=self.config.subagent_light_llm_provider,
-            model=self.config.subagent_light_llm_model,
-            temperature=self.llm.temperature if hasattr(self.llm, 'temperature') else 0.7,
-            max_tokens=self.llm.max_tokens if hasattr(self.llm, 'max_tokens') else None
-        )
-
-        return light_llm
+        injected = getattr(self._component_options, "subagent_llm", None)
+        if injected is not None:
+            return injected
+        if self.config.subagent_light_llm_provider or self.config.subagent_light_llm_model:
+            raise ValueError("独立子代理模型请通过 AgentComponents(subagent_llm=...) 注入完整配置")
+        return self.llm

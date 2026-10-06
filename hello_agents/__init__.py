@@ -4,13 +4,11 @@ HelloAgents - 灵活、可扩展的多智能体框架
 基于OpenAI原生API构建，提供简洁高效的智能体开发体验。
 """
 
-# 配置第三方库的日志级别，减少噪音
 import logging
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("qdrant_client").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("neo4j").setLevel(logging.WARNING)
-logging.getLogger("neo4j.notifications").setLevel(logging.WARNING)
+from ._python_version import show_recommendation as _show_recommendation
+
+_show_recommendation()
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 from .version import __version__, __author__, __email__, __description__
 
@@ -30,7 +28,11 @@ from .agents.plan_solve_agent import PlanSolveAgent
 from .tools.registry import ToolRegistry, global_registry
 from .tools.builtin.calculator import CalculatorTool, calculate
 
+from .core.components import AgentComponents, DEFAULT_COMPONENT
+
 __all__ = [
+    "AgentComponents",
+    "DEFAULT_COMPONENT",
     # 版本信息
     "__version__",
     "__author__",
@@ -56,3 +58,5 @@ __all__ = [
     "calculate",
 ]
 
+from .core.budget import RunBudget, BudgetExceeded
+__all__ += ["RunBudget", "BudgetExceeded"]

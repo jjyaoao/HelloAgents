@@ -4,6 +4,8 @@ from .base import Tool, ToolParameter, tool_action
 from .registry import ToolRegistry, global_registry
 from .response import ToolResponse, ToolStatus
 from .errors import ToolErrorCode
+from .mcp import MCPConnection
+from .permissions import PermissionDecision, ToolPolicy, AllowlistPolicy
 
 # 内置工具
 from .builtin.calculator import CalculatorTool
@@ -12,6 +14,10 @@ from .builtin.todowrite_tool import TodoWriteTool, TodoItem, TodoList
 from .builtin.devlog_tool import DevLogTool, DevLogEntry, DevLogStore, CATEGORIES
 from .builtin.task_tool import TaskTool
 from .builtin.skill_tool import SkillTool
+from .builtin.rag_tool import RAGTool
+from .builtin.relation_tool import RelationTool
+from .builtin.memory_tool import MemoryTool
+from .builtin.graphrag_tool import GraphRAGTool
 
 # 子代理机制
 from .tool_filter import ToolFilter, ReadOnlyFilter, FullAccessFilter, CustomFilter
@@ -28,6 +34,10 @@ __all__ = [
     "ToolResponse",
     "ToolStatus",
     "ToolErrorCode",
+    "MCPConnection",
+    "PermissionDecision",
+    "ToolPolicy",
+    "AllowlistPolicy",
 
     # 内置工具
     "CalculatorTool",
@@ -44,6 +54,10 @@ __all__ = [
     "CATEGORIES",
     "TaskTool",
     "SkillTool",
+    "RAGTool",
+    "RelationTool",
+    "MemoryTool",
+    "GraphRAGTool",
 
     # 子代理机制
     "ToolFilter",

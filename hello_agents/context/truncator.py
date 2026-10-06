@@ -61,13 +61,15 @@ class ObservationTruncator:
             truncate_direction: 截断方向 (head/tail/head_tail)
             output_dir: 完整输出保存目录
         """
+        if type(max_lines) is not int or max_lines < 1 or type(max_bytes) is not int or max_bytes < 1:
+            raise ValueError("max_lines 和 max_bytes 必须是正整数")
+        if truncate_direction not in {"head", "tail", "head_tail"}:
+            raise ValueError("truncate_direction 必须是 head、tail 或 head_tail")
         self.max_lines = max_lines
         self.max_bytes = max_bytes
         self.truncate_direction = truncate_direction
         self.output_dir = output_dir
         
-        # 确保输出目录存在
-        os.makedirs(self.output_dir, exist_ok=True)
     
     def truncate(
         self,
@@ -110,6 +112,16 @@ class ObservationTruncator:
         # 需要截断
         truncated_lines = self._truncate_lines(lines)
         preview = "\n".join(truncated_lines)
+        encoded = preview.encode("utf-8")
+        if len(encoded) > self.max_bytes:
+            if self.truncate_direction == "tail":
+                preview = encoded[-self.max_bytes:].decode("utf-8", errors="ignore")
+            elif self.truncate_direction == "head_tail":
+                half = self.max_bytes // 2
+                preview = (encoded[:self.max_bytes-half].decode("utf-8", errors="ignore")
+                           + (encoded[-half:].decode("utf-8", errors="ignore") if half else ""))
+            else:
+                preview = encoded[:self.max_bytes].decode("utf-8", errors="ignore")
         truncated_bytes = len(preview.encode('utf-8'))
         
         # 保存完整输出
@@ -123,7 +135,7 @@ class ObservationTruncator:
                 "direction": self.truncate_direction,
                 "original_lines": len(lines),
                 "original_bytes": bytes_size,
-                "kept_lines": len(truncated_lines),
+                "kept_lines": len(preview.splitlines()),
                 "kept_bytes": truncated_bytes,
                 "time_ms": int((time.time() - start) * 1000)
             }
@@ -143,8 +155,12 @@ class ObservationTruncator:
         elif self.truncate_direction == "tail":
             return lines[-self.max_lines:]
         elif self.truncate_direction == "head_tail":
-            half = self.max_lines // 2
-            return lines[:half] + ["...(中间省略)..."] + lines[-half:]
+            if len(lines) <= self.max_lines:
+                return lines
+            if self.max_lines < 3:
+                return lines[:self.max_lines]
+            half = (self.max_lines - 1) // 2
+            return lines[:self.max_lines - 1 - half] + ["...(中间省略)..."] + lines[-half:]
         else:
             # 默认 head
             return lines[:self.max_lines]
@@ -165,6 +181,7 @@ class ObservationTruncator:
         Returns:
             保存的文件路径
         """
+        os.makedirs(self.output_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"tool_{timestamp}_{tool_name}.json"
         filepath = os.path.join(self.output_dir, filename)

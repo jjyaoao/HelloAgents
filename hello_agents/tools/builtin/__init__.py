@@ -18,8 +18,16 @@ from .todowrite_tool import TodoWriteTool, TodoItem, TodoList
 from .devlog_tool import DevLogTool, DevLogEntry, DevLogStore, CATEGORIES
 from .task_tool import TaskTool
 from .skill_tool import SkillTool
+from .rag_tool import RAGTool
+from .relation_tool import RelationTool
+from .memory_tool import MemoryTool
+from .graphrag_tool import GraphRAGTool
 
 __all__ = [
+    "RAGTool",
+    "RelationTool",
+    "MemoryTool",
+    "GraphRAGTool",
     "CalculatorTool",
     "ReadTool",
     "WriteTool",
