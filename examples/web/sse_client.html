@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HelloAgents 流式事件</title>
+<style>
+body{max-width:850px;margin:3rem auto;padding:0 1rem;font:16px/1.7 system-ui;color:#172b4d}
+textarea{display:block;width:100%;box-sizing:border-box;min-height:90px;margin:1rem 0;font:inherit}
+button,select{font:inherit;padding:.4rem .8rem}pre{white-space:pre-wrap;background:#f3f5f8;padding:1rem;border-radius:8px}
+</style>
+<h1>HelloAgents 流式事件</h1><p>默认使用预设模型响应，展示真实运行事件。服务端配置真实模型后可执行工具任务。</p>
+<select id="kind"><option>simple</option><option>react</option><option>reflection</option><option>plan</option></select>
+<textarea id="prompt">请用计算器计算 (320 + 80) * 2。</textarea>
+<button id="start">开始</button> <button id="stop" disabled>停止</button>
+<pre id="output" aria-live="polite">等待任务。</pre>
+<script>
+const start=document.querySelector('#start'),stop=document.querySelector('#stop'),output=document.querySelector('#output');
+let controller;
+function render(block){
+  const data=block.split('\n').filter(x=>x.startsWith('data:')).map(x=>x.slice(5).trimStart()).join('\n');
+  if(data){const event=JSON.parse(data);output.textContent+=event.type+' '+JSON.stringify(event.data)+'\n';}
+}
+start.onclick=async()=>{
+ controller=new AbortController();start.disabled=true;stop.disabled=false;output.textContent='';
+ try{
+  const r=await fetch('/agent/stream',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({input:document.querySelector('#prompt').value,agent_type:document.querySelector('#kind').value}),signal:controller.signal});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const reader=r.body.getReader(),decoder=new TextDecoder();let buffer='';
+  try{
+    while(true){const {done,value}=await reader.read();buffer+=decoder.decode(value,{stream:!done});
+      buffer=buffer.replace(/\r\n/g,'\n');let index;
+      while((index=buffer.indexOf('\n\n'))>=0){render(buffer.slice(0,index));buffer=buffer.slice(index+2);}
+      if(done)break;
+    }
+  }finally{reader.releaseLock();}
+ }catch(e){output.textContent+=e.name==='AbortError'?'已停止接收。':e.message;}
+ finally{start.disabled=false;stop.disabled=true;}
+};
+stop.onclick=()=>controller?.abort();
+</script></html>

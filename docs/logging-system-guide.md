@@ -1,416 +1,83 @@
-# 日志系统指南（Logging System）
+# 将运行事件接入 Python 日志
 
-## 📖 概述
+应用日志负责把运行状态送入终端或日志平台；轨迹文件负责保存可回看的事件。两者可以同时使用。使用运行回调或流式事件接入应用已有的日志系统。
 
-HelloAgents 框架提供**四种日志范式**，满足不同场景的日志需求：
+## 📚 目录
 
-1. **TraceLogger** - 执行轨迹审计（JSONL + HTML）
-2. **AgentLogger** - Agent 运行日志（结构化）
-3. **DevLogTool** - 开发日志工具（Agent 可用）
-4. **标准 logging** - Python 标准日志
+- [最小示例](#最小示例)
+- [应用中的做法](#应用中的做法)
+- [部署时怎样组织日志](#部署时怎样组织日志)
+- [常见问题](#常见问题)
 
----
+## 最小示例
 
-## 🚀 快速开始
-
-### 1. TraceLogger（执行轨迹）
+下面使用离线协议替身，检查开始、结束回调确实进入标准库 `logging`。
 
 ```python
-from hello_agents import ReActAgent, HelloAgentsLLM
-from hello_agents.core.observability import TraceLogger
-
-# 启用 TraceLogger
-logger = TraceLogger(output_dir="logs")
-agent = ReActAgent("assistant", HelloAgentsLLM(), trace_logger=logger)
-
-# 执行任务
-agent.run("分析项目")
-
-# 查看日志
-# - logs/trace.jsonl（机器可读）
-# - logs/trace.html（人类可读）
-```
-
-### 2. AgentLogger（Agent 日志）
-
-```python
-from hello_agents import ReActAgent, HelloAgentsLLM
-from hello_agents.core.logging import AgentLogger
-
-# 启用 AgentLogger
-logger = AgentLogger(name="assistant", level="INFO")
-agent = ReActAgent("assistant", HelloAgentsLLM(), logger=logger)
-
-# 执行任务
-agent.run("分析项目")
-
-# 日志输出：
-# [2026-02-21 10:30:45] [INFO] [assistant] Agent 开始执行
-# [2026-02-21 10:30:46] [INFO] [assistant] 调用工具: Read
-# [2026-02-21 10:30:47] [INFO] [assistant] Agent 完成
-```
-
-### 3. DevLogTool（开发日志）
-
-```python
-from hello_agents import ReActAgent, HelloAgentsLLM, Config
-
-# 启用 DevLogTool
-config = Config(devlog_enabled=True)
-agent = ReActAgent("assistant", HelloAgentsLLM(), config=config)
-
-# Agent 可以使用 DevLog 工具
-agent.run("记录开发决策：使用 Redis 作为缓存")
-
-# 查看日志
-# - memory/devlogs/devlog-xxx.json
-```
-
-### 4. 标准 logging
-
-```python
+import asyncio
+import io
 import logging
-from hello_agents import ReActAgent, HelloAgentsLLM
+from examples.agents.runtime_features import ScriptedLLM, response
+from hello_agents import Config, SimpleAgent
 
-# 配置标准 logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+def build_agent(llm):
+    return SimpleAgent("文档示例", llm, config=Config(
+        trace_enabled=False, session_enabled=False, skills_enabled=False,
+        subagent_enabled=False, todowrite_enabled=False, devlog_enabled=False,
+    ))
 
-agent = ReActAgent("assistant", HelloAgentsLLM())
-agent.run("分析项目")
+stream = io.StringIO()
+logger = logging.getLogger("travel.runtime")
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(stream)
+logger.addHandler(handler)
+logger.propagate = False
 
-# 日志输出：
-# 2026-02-21 10:30:45,123 [INFO] Agent 开始执行
-```
+async def main():
+    agent = build_agent(ScriptedLLM([response("资料已整理。")]))
+    answer = await agent.arun(
+        "整理资料",
+        on_start=lambda event: logger.info("started: %s", event.data["input_text"]),
+        on_finish=lambda event: logger.info("finished: %s", event.data["result"]),
+        on_error=lambda event: logger.error("failed: %s", event.data["error"]),
+    )
+    assert answer == "资料已整理。"
 
----
-
-## 💡 四种范式对比
-
-| 范式         | 用途           | 格式         | 可读性 | Agent 可用 | 持久化 |
-| ------------ | -------------- | ------------ | ------ | ---------- | ------ |
-| TraceLogger  | 执行轨迹审计   | JSONL + HTML | 高     | ❌          | ✅      |
-| AgentLogger  | Agent 运行日志 | 结构化文本   | 中     | ❌          | ✅      |
-| DevLogTool   | 开发决策记录   | JSON         | 高     | ✅          | ✅      |
-| 标准 logging | 通用日志       | 文本         | 低     | ❌          | ✅      |
-
----
-
-## 📝 使用指南
-
-### 1. TraceLogger 详细说明
-
-**特点：**
-- ✅ 记录所有 LLM 请求和工具调用
-- ✅ 双格式输出（JSONL + HTML）
-- ✅ 支持审计和回放
-
-**配置：**
-```python
-from hello_agents.core.observability import TraceLogger
-
-logger = TraceLogger(
-    output_dir="logs",           # 输出目录
-    jsonl_file="trace.jsonl",    # JSONL 文件名
-    html_file="trace.html",      # HTML 文件名
-    enable_jsonl=True,           # 启用 JSONL
-    enable_html=True             # 启用 HTML
-)
-```
-
-**日志内容：**
-```json
-{
-  "timestamp": "2026-02-21T10:30:45.123Z",
-  "event_type": "llm_request",
-  "data": {
-    "messages": [...],
-    "model": "gpt-4",
-    "temperature": 0.7
-  }
-}
-{
-  "timestamp": "2026-02-21T10:30:46.456Z",
-  "event_type": "tool_call",
-  "data": {
-    "tool_name": "Read",
-    "parameters": {"path": "config.py"},
-    "result": "..."
-  }
-}
-```
-
-**查看 HTML 报告：**
-```bash
-# 在浏览器中打开
-open logs/trace.html
-```
-
-### 2. AgentLogger 详细说明
-
-**特点：**
-- ✅ 结构化日志（时间戳、级别、消息）
-- ✅ 支持多个 Agent 独立日志
-- ✅ 可配置日志级别
-
-**配置：**
-```python
-from hello_agents.core.logging import AgentLogger
-
-logger = AgentLogger(
-    name="assistant",           # Logger 名称
-    level="INFO",               # 日志级别（DEBUG/INFO/WARNING/ERROR）
-    output_file="agent.log",    # 输出文件
-    format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
-)
-```
-
-**日志级别：**
-```python
-logger.debug("调试信息")
-logger.info("普通信息")
-logger.warning("警告信息")
-logger.error("错误信息")
-```
-
-**多 Agent 日志：**
-```python
-# Agent 1
-logger1 = AgentLogger(name="explorer", output_file="explorer.log")
-agent1 = ReActAgent("explorer", llm, logger=logger1)
-
-# Agent 2
-logger2 = AgentLogger(name="analyzer", output_file="analyzer.log")
-agent2 = ReActAgent("analyzer", llm, logger=logger2)
-```
-
-### 3. DevLogTool 详细说明
-
-**特点：**
-- ✅ Agent 可以主动记录日志
-- ✅ 7 种日志类别（decision、progress、issue 等）
-- ✅ 结构化存储（JSON）
-
-**使用：**
-```python
-# 启用 DevLogTool
-config = Config(devlog_enabled=True)
-agent = ReActAgent("assistant", llm, config=config)
-
-# Agent 使用 DevLog 工具
-agent.run("""
-记录开发决策：
-- category: decision
-- content: 使用 Redis 作为缓存
-- metadata: {"reason": "高性能"}
-""")
-```
-
-**详细文档：** 参见 [DevLog 指南](./devlog-guide.md)
-
-### 4. 标准 logging 详细说明
-
-**特点：**
-- ✅ Python 标准库，无需额外依赖
-- ✅ 灵活配置（Handler、Formatter）
-- ✅ 与其他库兼容
-
-**配置：**
-```python
-import logging
-
-# 基本配置
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler()
-    ]
-)
-
-# 使用
-logger = logging.getLogger(__name__)
-logger.info("Agent 开始执行")
-```
-
----
-
-## 📊 实际案例
-
-### 案例 1：生产环境监控
-
-**场景：** 监控 Agent 运行状态
-
-```python
-# 使用 AgentLogger + 标准 logging
-import logging
-from hello_agents.core.logging import AgentLogger
-
-# 配置标准 logging（应用级别）
-logging.basicConfig(level=logging.INFO)
-
-# 配置 AgentLogger（Agent 级别）
-agent_logger = AgentLogger(
-    name="production_agent",
-    level="INFO",
-    output_file="logs/agent.log"
-)
-
-agent = ReActAgent("assistant", llm, logger=agent_logger)
-
-# 执行任务
 try:
-    result = agent.run("处理用户请求")
-except Exception as e:
-    logging.error(f"Agent 执行失败: {e}")
+    asyncio.run(main())
+    assert "started" in stream.getvalue() and "finished" in stream.getvalue()
+    print(stream.getvalue())
+finally:
+    logger.removeHandler(handler)
+    handler.close()
 ```
 
-### 案例 2：开发调试
+回调接收 `AgentEvent`。`on_start` 的 `data.input_text` 是输入，`on_finish` 的 `data.result` 和 `data.status` 是最终文本及状态，`on_error` 的 `data.error` 是错误说明。回调可为同步函数或异步函数。需要逐个文本增量或工具回执时，消费 `arun_stream()` 返回的事件，再把选定字段写入日志。
 
-**场景：** 调试 Agent 执行过程
+## 应用中的做法
 
-```python
-# 使用 TraceLogger + AgentLogger
-from hello_agents.core.observability import TraceLogger
-from hello_agents.core.logging import AgentLogger
+在应用入口配置 handler，避免每次请求重复注册。把会话 ID、请求 ID、工具名和终止状态作为结构化字段保存；默认不要写入用户原文、密钥或完整工具参数。日志框架的级别设置不会自动关闭代码中所有 `print` 输出。
 
-# TraceLogger（详细轨迹）
-trace_logger = TraceLogger(output_dir="debug_logs")
+运行是否完成以 `last_run_result.status` 为准；收到文本不代表运行已经成功结束。若要排查具体工具参数和结果，可开启 `Config(trace_enabled=True, trace_dir="workspace/traces")`，并按数据保留策略管理轨迹文件。
 
-# AgentLogger（DEBUG 级别）
-agent_logger = AgentLogger(name="debug_agent", level="DEBUG")
+相关指南：[运行轨迹](observability-guide.md)、[流式事件](streaming-sse-guide.md)、[运行状态](runtime-guide.md)。
 
-agent = ReActAgent(
-    "assistant",
-    llm,
-    trace_logger=trace_logger,
-    logger=agent_logger
-)
+## 部署时怎样组织日志
 
-# 执行任务
-agent.run("分析项目")
+推荐在应用启动时配置一个具名 logger，并把请求标识、会话标识、Agent 名称和运行状态作为结构化字段。业务日志记录用户请求的生命周期；工具层记录服务调用是否成功；TraceLogger 保留需要回看的模型和工具事件。三者用相同请求标识关联，避免把所有内容拼成一行文本。
 
-# 查看日志
-# - debug_logs/trace.html（可视化轨迹）
-# - agent.log（详细日志）
-```
+服务中重复创建 handler 会让同一事件输出多次。把日志初始化放在应用入口，清理测试或临时 handler 时调用 `removeHandler()` 和 `close()`；不要在每个工具函数里重复初始化整个日志系统。框架导入不会替应用选择全局日志级别。
 
-### 案例 3：项目复盘
+## 常见问题
 
-**场景：** 记录开发决策和问题
+**为什么设置 WARNING 后，终端仍有文字？**
 
-```python
-# 使用 DevLogTool
-config = Config(devlog_enabled=True)
-agent = ReActAgent("assistant", llm, config=config)
+Python logging 只管理 logger 的记录，不能屏蔽普通 `print`。需要统一收集输出时，在宿主层区分标准输出、标准错误与日志，不要把所有终端文字都当成日志级别失效。
 
-# Agent 记录开发日志
-agent.run("""
-1. 记录决策：使用 PostgreSQL 作为数据库
-2. 记录问题：内存泄漏导致服务崩溃
-3. 记录解决方案：修复内存泄漏
-""")
+**on_finish 和 on_error 应怎样用于告警？**
 
-# 查询日志
-agent.run("查询所有问题日志")
-```
+将回调中的状态和 `last_run_result` 一起判断。超时、取消与预算结束不是相同故障；可以分别记录，避免把用户主动停止也当作服务异常。
 
----
+**可以在生产日志中直接保存整个 event 吗？**
 
-## 🎯 最佳实践
-
-### 1. 根据场景选择日志范式
-
-```python
-# ✅ 生产环境：AgentLogger + 标准 logging
-agent_logger = AgentLogger(name="prod", level="INFO")
-logging.basicConfig(level=logging.WARNING)
-
-# ✅ 开发调试：TraceLogger + AgentLogger（DEBUG）
-trace_logger = TraceLogger(output_dir="debug")
-agent_logger = AgentLogger(name="dev", level="DEBUG")
-
-# ✅ 项目管理：DevLogTool
-config = Config(devlog_enabled=True)
-```
-
-### 2. 日志分级
-
-```python
-# DEBUG：详细调试信息
-logger.debug(f"工具参数: {parameters}")
-
-# INFO：普通信息
-logger.info("Agent 开始执行")
-
-# WARNING：警告信息
-logger.warning("工具调用超时，重试中...")
-
-# ERROR：错误信息
-logger.error(f"Agent 执行失败: {error}")
-```
-
-### 3. 日志轮转
-
-```python
-from logging.handlers import RotatingFileHandler
-
-handler = RotatingFileHandler(
-    "agent.log",
-    maxBytes=10*1024*1024,  # 10MB
-    backupCount=5           # 保留 5 个备份
-)
-
-logging.basicConfig(handlers=[handler])
-```
-
----
-
-## 🔗 相关文档
-
-- [可观测性](./observability-guide.md) - TraceLogger 详细说明
-- [DevLog 指南](./devlog-guide.md) - DevLogTool 详细说明
-
----
-
-## ❓ 常见问题
-
-**Q: 如何同时使用多种日志范式？**
-
-A: 可以组合使用：
-```python
-trace_logger = TraceLogger(output_dir="logs")
-agent_logger = AgentLogger(name="assistant", level="INFO")
-config = Config(devlog_enabled=True)
-
-agent = ReActAgent(
-    "assistant",
-    llm,
-    trace_logger=trace_logger,
-    logger=agent_logger,
-    config=config
-)
-```
-
-**Q: 日志文件太大怎么办？**
-
-A: 使用日志轮转：
-```python
-from logging.handlers import RotatingFileHandler
-
-handler = RotatingFileHandler("agent.log", maxBytes=10*1024*1024, backupCount=5)
-```
-
-**Q: 如何禁用所有日志？**
-
-A: 设置日志级别为 CRITICAL：
-```python
-logging.basicConfig(level=logging.CRITICAL)
-```
-
----
-
-**最后更新**: 2026-02-21
+应先挑选字段。事件可能携带输入文本、工具结果和业务信息；按排查需要保存标识、状态和简短错误，再用受控轨迹定位详情。

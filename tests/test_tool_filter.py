@@ -18,7 +18,7 @@ class TestReadOnlyFilter:
         
         all_tools = [
             "Read", "Write", "Edit", "LS", "Grep",
-            "Bash", "MemoryTool", "SearchTool"
+            "Bash", "MemoryTool", "SearchTool", "MemorySearchTool", "memory_search"
         ]
         
         filtered = filter_obj.filter(all_tools)
@@ -27,7 +27,10 @@ class TestReadOnlyFilter:
         assert "Read" in filtered
         assert "LS" in filtered
         assert "Grep" in filtered
-        assert "MemoryTool" in filtered
+        # 综合 MemoryTool 可写入、修订和撤回；仅独立查询入口属于只读。
+        assert "MemorySearchTool" in filtered
+        assert "memory_search" in filtered
+        assert "MemoryTool" not in filtered
         assert "SearchTool" in filtered
         
         # 不应该包含写入工具

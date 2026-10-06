@@ -89,13 +89,20 @@ class TokenCounter:
             Token 数
         """
         # 使用消息内容作为缓存键
-        cache_key = f"{message.role}:{message.content}"
+        content = message.content
+        native = (message.metadata or {}).get("model_message", {})
+        if native.get("tool_calls"):
+            import json
+            content += json.dumps(native["tool_calls"], ensure_ascii=False)
+        if native.get("tool_call_id"):
+            content += native["tool_call_id"]
+        cache_key = f"{message.role}:{content}"
         
         if cache_key in self._cache:
             return self._cache[cache_key]
         
         # 计算 Token 数
-        tokens = self._count_text(message.content)
+        tokens = self._count_text(content)
         
         # 添加角色标记的开销（约 4 tokens）
         tokens += 4

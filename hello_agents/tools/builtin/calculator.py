@@ -9,9 +9,10 @@ from ..base import Tool, ToolParameter
 from ..response import ToolResponse
 from ..errors import ToolErrorCode
 
+
 class CalculatorTool(Tool):
     """Python计算器工具"""
-    
+
     # 支持的操作符
     OPERATORS = {
         ast.Add: operator.add,
@@ -22,30 +23,30 @@ class CalculatorTool(Tool):
         ast.BitXor: operator.xor,
         ast.USub: operator.neg,
     }
-    
+
     # 支持的函数
     FUNCTIONS = {
-        'abs': abs,
-        'round': round,
-        'max': max,
-        'min': min,
-        'sum': sum,
-        'sqrt': math.sqrt,
-        'sin': math.sin,
-        'cos': math.cos,
-        'tan': math.tan,
-        'log': math.log,
-        'exp': math.exp,
-        'pi': math.pi,
-        'e': math.e,
+        "abs": abs,
+        "round": round,
+        "max": max,
+        "min": min,
+        "sum": sum,
+        "sqrt": math.sqrt,
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+        "log": math.log,
+        "exp": math.exp,
+        "pi": math.pi,
+        "e": math.e,
     }
-    
+
     def __init__(self):
         super().__init__(
             name="python_calculator",
-            description="执行数学计算。支持基本运算、数学函数等。例如：2+3*4, sqrt(16), sin(pi/2)等。"
+            description="执行数学计算。支持基本运算、数学函数等。例如：2+3*4, sqrt(16), sin(pi/2)等。",
         )
-    
+
     def run(self, parameters: Dict[str, Any]) -> ToolResponse:
         """
         执行计算
@@ -61,15 +62,14 @@ class CalculatorTool(Tool):
 
         if not expression:
             return ToolResponse.error(
-                code=ToolErrorCode.INVALID_PARAM,
-                message="计算表达式不能为空"
+                code=ToolErrorCode.INVALID_PARAM, message="计算表达式不能为空"
             )
 
         print(f"🧮 正在计算: {expression}")
 
         try:
             # 解析表达式
-            node = ast.parse(expression, mode='eval')
+            node = ast.parse(expression, mode="eval")
             result = self._eval_node(node.body)
             result_str = str(result)
 
@@ -77,12 +77,12 @@ class CalculatorTool(Tool):
 
             return ToolResponse.success(
                 text=f"计算结果: {result_str}",
-         data={
+                data={
                     "expression": expression,
                     "result": result,
                     "result_str": result_str,
-                    "result_type": type(result).__name__
-                }
+                    "result_type": type(result).__name__,
+                },
             )
         except SyntaxError as e:
             error_msg = f"表达式语法错误: {str(e)}"
@@ -90,7 +90,7 @@ class CalculatorTool(Tool):
             return ToolResponse.error(
                 code=ToolErrorCode.INVALID_FORMAT,
                 message=error_msg,
-                context={"expression": expression}
+                context={"expression": expression},
             )
         except Exception as e:
             error_msg = f"计算失败: {str(e)}"
@@ -98,19 +98,18 @@ class CalculatorTool(Tool):
             return ToolResponse.error(
                 code=ToolErrorCode.EXECUTION_ERROR,
                 message=error_msg,
-                context={"expression": expression}
+                context={"expression": expression},
             )
-    
+
     def _eval_node(self, node):
         """递归计算AST节点"""
-        if isinstance(node, ast.Constant):  # Python 3.8+
+        if isinstance(node, ast.Constant):
+            if type(node.value) not in (int, float, complex):
+                raise ValueError("计算器只接受数字常量")
             return node.value
-        elif isinstance(node, ast.Num):  # Python < 3.8
-            return node.n
         elif isinstance(node, ast.BinOp):
             return self.OPERATORS[type(node.op)](
-                self._eval_node(node.left), 
-                self._eval_node(node.right)
+                self._eval_node(node.left), self._eval_node(node.right)
             )
         elif isinstance(node, ast.UnaryOp):
             return self.OPERATORS[type(node.op)](self._eval_node(node.operand))
@@ -128,18 +127,20 @@ class CalculatorTool(Tool):
                 raise ValueError(f"未定义的变量: {node.id}")
         else:
             raise ValueError(f"不支持的表达式类型: {type(node)}")
-    
+
     def get_parameters(self):
         """获取工具参数定义"""
         from ..base import ToolParameter
+
         return [
             ToolParameter(
                 name="input",
                 type="string",
                 description="要计算的数学表达式，支持基本运算和数学函数",
-                required=True
+                required=True,
             )
         ]
+
 
 # 便捷函数
 def calculate(expression: str) -> str:

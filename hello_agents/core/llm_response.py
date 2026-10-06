@@ -1,6 +1,6 @@
 """LLM响应对象定义"""
 
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, field
 
 
@@ -18,8 +18,10 @@ class LLMToolResponse:
     content: Optional[str]
     tool_calls: List[ToolCall]
     model: str
-    usage: Dict[str, int] = field(default_factory=dict)
+    usage: Dict[str, Any] = field(default_factory=dict)
     latency_ms: int = 0
+    finish_reason: Optional[str] = None
+    reasoning_content: Optional[str] = None
 
 
 @dataclass
@@ -36,17 +38,18 @@ class LLMResponse:
     model: str
     """实际使用的模型名称"""
     
-    usage: Dict[str, int] = field(default_factory=dict)
+    usage: Dict[str, Any] = field(default_factory=dict)
     """Token使用统计: {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}"""
     
     latency_ms: int = 0
     """调用耗时（毫秒）"""
     
     reasoning_content: Optional[str] = None
+    finish_reason: Optional[str] = None
     """推理过程（仅thinking model如o1、deepseek-reasoner有此字段）"""
     
     def __str__(self) -> str:
-        """向后兼容：直接打印返回content"""
+        """直接打印回答文本。"""
         return self.content
     
     def __repr__(self) -> str:
@@ -68,6 +71,7 @@ class LLMResponse:
             "model": self.model,
             "usage": self.usage,
             "latency_ms": self.latency_ms,
+            "finish_reason": self.finish_reason,
         }
         if self.reasoning_content:
             result["reasoning_content"] = self.reasoning_content
@@ -85,13 +89,14 @@ class StreamStats:
     model: str
     """实际使用的模型名称"""
     
-    usage: Dict[str, int] = field(default_factory=dict)
+    usage: Dict[str, Any] = field(default_factory=dict)
     """Token使用统计"""
     
     latency_ms: int = 0
     """调用耗时（毫秒）"""
     
     reasoning_content: Optional[str] = None
+    finish_reason: Optional[str] = None
     """推理过程（仅thinking model）"""
     
     def to_dict(self) -> Dict:
@@ -100,6 +105,7 @@ class StreamStats:
             "model": self.model,
             "usage": self.usage,
             "latency_ms": self.latency_ms,
+            "finish_reason": self.finish_reason,
         }
         if self.reasoning_content:
             result["reasoning_content"] = self.reasoning_content

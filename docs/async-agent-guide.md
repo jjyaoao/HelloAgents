@@ -1,452 +1,99 @@
-# 异步 Agent 指南（Async Agent）
+# 异步执行与生命周期回调
 
-## 📖 概述
+异步入口让应用在等待模型或工具时处理其他任务。四种 Agent 共用执行循环，`arun()` 返回最终文本，`arun_stream()` 返回事件；工具并发策略由具体 Agent 决定。异步不会自动隔离共享历史、数据库或外部写入。
 
-**异步 Agent** 是 HelloAgents 框架的异步执行能力，支持 `arun()` 和 `arun_stream()` 方法，实现并行工具调用和流式输出。
+## 目录
 
-### 核心特性
+- [先运行一个无需密钥的例子](#先运行一个无需密钥的例子)
+- [使用回调观察一次运行](#使用回调观察一次运行)
+- [并发任务与工具](#并发任务与工具)
+- [超时取消与资源](#超时取消与资源)
+- [接入真实模型](#接入真实模型)
 
-- ✅ **向后兼容**：现有 `run()` 方法完全不变
-- ✅ **工具并行**：用户工具并行执行，内置工具串行
-- ✅ **生命周期钩子**：on_start、on_step、on_tool_call、on_finish、on_error
-- ✅ **流式输出**：实时返回 LLM 输出和工具调用
+## 先运行一个无需密钥的例子
 
----
+先在源码根目录安装框架并执行：
 
-## 🚀 快速开始
+```bash
+python -m pip install -r requirements.txt
+python -X utf8 -m examples.agents.runtime_features --workspace workspace/runtime-demo
+```
 
-### 1. 异步执行
+示例使用明确标注的 `ScriptedLLM` 预设模型响应，实际执行异步工具、SQLite 查询和会话保存恢复。观察 `result.json`：首轮 `model_calls=2`、`tool_calls=1`、`status=completed`；恢复后保留工具请求与结果配对。它验证运行协议，不测量真实模型的决策能力。
+
+## 使用回调观察一次运行
+
+以下片段在源码根目录执行，无需密钥；与上述示例使用同一组公共接口。
 
 ```python
 import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
+from tempfile import TemporaryDirectory
+from examples.agents.runtime_features import ScriptedLLM, build_agent, response
 
 async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    
-    # 异步执行
-    result = await agent.arun("分析项目结构")
-    print(result)
+    observed = []
 
-asyncio.run(main())
-```
+    async def started(event):
+        observed.append((event.type.value, event.data["input_text"]))
 
-### 2. 流式输出
+    async def step_finished(event):
+        observed.append((event.type.value, event.data["step"]))
 
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
+    async def finished(event):
+        observed.append((event.type.value, event.data["status"]))
 
-async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    
-    # 流式执行
-    async for event in agent.arun_stream("分析项目结构"):
-        if event.type == "LLM_CHUNK":
-            print(event.data["content"], end="", flush=True)
-        elif event.type == "TOOL_CALL_START":
-            print(f"\n🔧 调用工具: {event.data['tool_name']}")
-        elif event.type == "TOOL_CALL_FINISH":
-            print(f"✅ 工具完成: {event.data['tool_name']}")
-
-asyncio.run(main())
-```
-
----
-
-## 💡 核心概念
-
-### 1. 异步方法
-
-| 方法            | 同步版本 | 功能                 |
-| --------------- | -------- | -------------------- |
-| `arun()`        | `run()`  | 异步执行，返回结果   |
-| `arun_stream()` | 无       | 流式执行，返回事件流 |
-
-### 2. 生命周期钩子
-
-```python
-from hello_agents.core.lifecycle import LifecycleHook, AgentEvent
-
-class MyHook(LifecycleHook):
-    async def on_start(self, event: AgentEvent):
-        print(f"Agent 开始: {event.data['input']}")
-    
-    async def on_step(self, event: AgentEvent):
-        print(f"步骤 {event.data['step']}")
-    
-    async def on_tool_call(self, event: AgentEvent):
-        print(f"调用工具: {event.data['tool_name']}")
-    
-    async def on_finish(self, event: AgentEvent):
-        print(f"Agent 完成: {event.data['result']}")
-    
-    async def on_error(self, event: AgentEvent):
-        print(f"错误: {event.data['error']}")
-
-# 注册钩子
-agent = ReActAgent("assistant", llm)
-agent.register_hook(MyHook())
-```
-
-### 3. 工具并行执行
-
-**ReActAgent 并行策略：**
-- ✅ **用户工具**：并行执行（Read、Write、Search 等）
-- ✅ **内置工具**：串行执行（Thought、Finish）
-
-```python
-# 示例：并行调用 3 个工具
-async def main():
-    agent = ReActAgent("assistant", llm, tool_registry=registry)
-    
-    # Agent 会并行调用 Read、Search、Calculator
-    result = await agent.arun("读取 config.py，搜索文档，计算 2+3")
-    
-    # 执行时间：max(Read, Search, Calculator) 而非 sum
-
-asyncio.run(main())
-```
-
----
-
-## 📝 使用指南
-
-### 1. 基本异步执行
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM, ToolRegistry
-from hello_agents.tools.builtin import ReadTool, SearchTool
-
-async def main():
-    # 创建 Agent
-    registry = ToolRegistry()
-    registry.register_tool(ReadTool(project_root="./"))
-    registry.register_tool(SearchTool())
-    
-    agent = ReActAgent("assistant", HelloAgentsLLM(), tool_registry=registry)
-    
-    # 异步执行
-    result = await agent.arun("读取 README.md 并搜索相关文档")
-    print(result)
-
-asyncio.run(main())
-```
-
-### 2. 流式输出
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
-from hello_agents.core.streaming import StreamEventType
-
-async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    
-    # 流式执行
-    async for event in agent.arun_stream("分析项目"):
-        if event.type == StreamEventType.AGENT_START:
-            print("🚀 Agent 开始")
-        
-        elif event.type == StreamEventType.STEP_START:
-            print(f"\n📍 步骤 {event.data['step']}")
-        
-        elif event.type == StreamEventType.THINKING:
-            print(f"💭 思考: {event.data['content']}")
-        
-        elif event.type == StreamEventType.TOOL_CALL_START:
-            print(f"🔧 调用: {event.data['tool_name']}")
-        
-        elif event.type == StreamEventType.TOOL_CALL_FINISH:
-            print(f"✅ 完成: {event.data['tool_name']}")
-        
-        elif event.type == StreamEventType.LLM_CHUNK:
-            print(event.data["content"], end="", flush=True)
-        
-        elif event.type == StreamEventType.AGENT_FINISH:
-            print("\n🎉 Agent 完成")
-
-asyncio.run(main())
-```
-
-### 3. 生命周期钩子
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
-from hello_agents.core.lifecycle import LifecycleHook, AgentEvent
-
-class LoggingHook(LifecycleHook):
-    """日志钩子"""
-    
-    async def on_start(self, event: AgentEvent):
-        print(f"[START] 输入: {event.data['input']}")
-    
-    async def on_tool_call(self, event: AgentEvent):
-        print(f"[TOOL] {event.data['tool_name']}: {event.data['parameters']}")
-    
-    async def on_finish(self, event: AgentEvent):
-        print(f"[FINISH] 结果: {event.data['result'][:100]}...")
-
-class MetricsHook(LifecycleHook):
-    """指标钩子"""
-    
-    def __init__(self):
-        self.tool_calls = 0
-        self.steps = 0
-    
-    async def on_step(self, event: AgentEvent):
-        self.steps += 1
-    
-    async def on_tool_call(self, event: AgentEvent):
-        self.tool_calls += 1
-    
-    async def on_finish(self, event: AgentEvent):
-        print(f"📊 统计: {self.steps} 步, {self.tool_calls} 次工具调用")
-
-async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    
-    # 注册多个钩子
-    agent.register_hook(LoggingHook())
-    agent.register_hook(MetricsHook())
-    
-    # 执行任务
-    result = await agent.arun("分析项目")
-
-asyncio.run(main())
-```
-
----
-
-## 📊 实际案例
-
-### 案例 1：并行工具调用
-
-**场景：** 同时读取多个文件
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM, ToolRegistry
-from hello_agents.tools.builtin import ReadTool
-
-async def main():
-    registry = ToolRegistry()
-    registry.register_tool(ReadTool(project_root="./"))
-    
-    agent = ReActAgent("assistant", HelloAgentsLLM(), tool_registry=registry)
-    
-    # Agent 会并行读取 3 个文件
-    result = await agent.arun("""
-    读取以下文件：
-    1. config.py
-    2. main.py
-    3. utils.py
-    """)
-    
-    # 执行时间：max(read1, read2, read3) 而非 sum
-
-asyncio.run(main())
-```
-
-**性能提升：**
-```
-串行执行：3 × 1s = 3s
-并行执行：max(1s, 1s, 1s) = 1s
-提升：3 倍
-```
-
-### 案例 2：实时进度显示
-
-**场景：** 显示 Agent 执行进度
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
-from hello_agents.core.streaming import StreamEventType
-
-async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    
-    print("🚀 开始分析项目...")
-    
-    async for event in agent.arun_stream("分析项目结构"):
-        if event.type == StreamEventType.STEP_START:
-            print(f"\n📍 步骤 {event.data['step']}/{event.data['max_steps']}")
-        
-        elif event.type == StreamEventType.TOOL_CALL_START:
-            print(f"  🔧 {event.data['tool_name']}...", end="", flush=True)
-        
-        elif event.type == StreamEventType.TOOL_CALL_FINISH:
-            duration = event.data.get('duration_ms', 0)
-            print(f" ✅ ({duration}ms)")
-        
-        elif event.type == StreamEventType.AGENT_FINISH:
-            print("\n🎉 分析完成！")
-
-asyncio.run(main())
-```
-
-**输出示例：**
-```
-🚀 开始分析项目...
-
-📍 步骤 1/10
-  🔧 Read... ✅ (245ms)
-  🔧 Search... ✅ (1230ms)
-
-📍 步骤 2/10
-  🔧 Calculator... ✅ (10ms)
-
-🎉 分析完成！
-```
-
-### 案例 3：错误处理
-
-**场景：** 捕获和处理异步错误
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
-from hello_agents.core.lifecycle import LifecycleHook, AgentEvent
-
-class ErrorHandler(LifecycleHook):
-    async def on_error(self, event: AgentEvent):
-        error = event.data['error']
-        print(f"❌ 错误: {error}")
-        
-        # 记录错误日志
-        with open("errors.log", "a") as f:
-            f.write(f"{event.timestamp}: {error}\n")
-
-async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    agent.register_hook(ErrorHandler())
-    
-    try:
-        result = await agent.arun("执行可能失败的任务")
-    except Exception as e:
-        print(f"任务失败: {e}")
-
-asyncio.run(main())
-```
-
----
-
-## 🎯 最佳实践
-
-### 1. 使用异步上下文管理器
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
-
-async def main():
-    async with ReActAgent("assistant", HelloAgentsLLM()) as agent:
-        result = await agent.arun("任务")
-        # Agent 自动清理资源
-
-asyncio.run(main())
-```
-
-### 2. 批量任务并行执行
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
-
-async def process_task(agent, task):
-    return await agent.arun(task)
-
-async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    
-    tasks = [
-        "分析 module1",
-        "分析 module2",
-        "分析 module3"
-    ]
-    
-    # 并行执行所有任务
-    results = await asyncio.gather(*[
-        process_task(agent, task) for task in tasks
-    ])
-    
-    for i, result in enumerate(results):
-        print(f"任务 {i+1}: {result}")
-
-asyncio.run(main())
-```
-
-### 3. 超时控制
-
-```python
-import asyncio
-from hello_agents import ReActAgent, HelloAgentsLLM
-
-async def main():
-    agent = ReActAgent("assistant", HelloAgentsLLM())
-    
-    try:
-        # 设置 60 秒超时
-        result = await asyncio.wait_for(
-            agent.arun("长时间任务"),
-            timeout=60.0
+    with TemporaryDirectory() as workspace:
+        agent = build_agent(workspace, ScriptedLLM([response("离线协议完成")]))
+        answer = await agent.arun(
+            "检查回调", on_start=started, on_step=step_finished, on_finish=finished,
         )
-    except asyncio.TimeoutError:
-        print("任务超时")
+        assert answer == "离线协议完成"
+        assert observed[-1] == ("agent_finish", "completed")
+        print(observed)
 
 asyncio.run(main())
 ```
 
----
+回调接收 `AgentEvent`，可为同步或异步函数；通过 `on_start`、`on_step`、`on_tool_call`、`on_finish`、`on_error` 关键字参数传入。Simple、Reflection 和 PlanSolve 的 `on_step` 在模型调用完成后收到 `step`、`usage`、`finish_reason` 和 `tool_count`。ReAct 在回合开始与结束时调用回调，使用事件类型区分 STEP_START 与 STEP_FINISH；它们都不等于一次外部操作。`on_tool_call` 可作为关键字传入，数据包含 `name`、`id`、JSON 字符串 `arguments` 和 `step`，同时提供字段 `tool_name`、`tool_call_id`、解析后的 `args`。`on_error` 收到 `error` 与 `error_type`。事件结构以[流式指南](streaming-sse-guide.md)为准。
 
-## 🔗 相关文档
+回调有 `Config.hook_timeout_seconds` 限制，适合记录进度，不应用它持有锁来包围工具执行。授权和参数检查应在工具调度层完成。
 
-- [流式输出](./streaming-sse-guide.md) - SSE 协议和前端集成
-- [可观测性](./observability-guide.md) - 追踪异步执行
-- [Function Calling](./function-calling-architecture.md) - 异步工具调用
+## 并发任务与工具
 
----
+一个 Agent 一次只能运行一个任务；同一实例并发调用会报错。独立任务创建独立 Agent，并分别管理历史和组件：
 
-## ❓ 常见问题
-
-**Q: 同步和异步方法可以混用吗？**
-
-A: 可以，但不推荐：
 ```python
-# ✅ 好：统一使用异步
+import asyncio
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from examples.agents.runtime_features import ScriptedLLM, build_agent, response
+
 async def main():
-    result = await agent.arun("任务")
+    with TemporaryDirectory() as workspace:
+        agents = [build_agent(Path(workspace) / str(i), ScriptedLLM([response(str(i))]))
+                  for i in range(2)]
+        results = await asyncio.gather(*(agent.arun("独立任务") for agent in agents))
+        assert results == ["0", "1"]
 
-# ❌ 不好：混用同步和异步
-def main():
-    result = agent.run("任务")  # 同步
-    asyncio.run(agent.arun("任务"))  # 异步
+asyncio.run(main())
 ```
 
-**Q: 如何禁用工具并行执行？**
+ReAct 对同一模型响应中的普通工具请求采用有界并发，`Config(max_concurrent_tools=1)` 可串行执行。含 `Thought` 或 `Finish` 的批次按顺序处理；其他 Agent 的共同工具循环默认逐项执行。模型不一定在同一响应发出多个请求，因此不能仅凭提示词或异步入口保证并行加速。
 
-A: 目前不支持禁用，但可以通过钩子控制：
-```python
-class SerialHook(LifecycleHook):
-    def __init__(self):
-        self.lock = asyncio.Lock()
-    
-    async def on_tool_call(self, event: AgentEvent):
-        async with self.lock:
-            # 强制串行执行
-            pass
-```
+共享可变工具仍可能相互影响；尤其多个请求修改同一文件或记录时，应在宿主或工具内部协调。独立 Agent 不等于独立工具状态。
 
-**Q: 流式输出的性能开销？**
+## 超时取消与资源
 
-A: 几乎没有开销：
-- 使用原生 AsyncOpenAI 客户端
-- 逐个 token 传输，无缓冲
-- 内存占用低
+`llm_async_timeout` 管等待模型，`tool_async_timeout` 管单次工具等待。应用还可用 `asyncio.wait_for(agent.arun(...), timeout=...)` 限制整个任务。运行异常继续抛出，检查 `agent.last_run.status` 区分失败与取消；完整状态见[运行指南](runtime-guide.md)。
 
----
+ReAct 一项工具超时后会取消并等待同批未完成的异步任务。Python 无法强制终止已在线程中运行的同步函数；取消不撤销已发生的副作用，也不保证线程立即停止。需要工具自己的超时、幂等键或补偿操作。
 
-**最后更新**: 2026-02-21
+取消或失败后，历史保留已取得的工具回执，未取得回执的请求标为 `execution_status="unknown"`。关闭流或等待任务退出后再保存会话；恢复时先核实未知操作状态。完整例子的 `interrupted_resume` 演示有写入回执的中断恢复，继续运行没有重放该写操作。
+
+提前结束事件流使用 `contextlib.aclosing`，不要只 `break` 后遗留生成器。Agent 本身没有异步上下文管理器接口，不能写 `async with ReActAgent(...)`。同步 `run()`、`stream_run()` 不能在已运行的事件循环中调用；Notebook 异步单元直接 `await agent.arun(...)`。
+
+## 接入真实模型
+
+将示例的 `ScriptedLLM` 换成 `HelloAgentsLLM()`，先配置 `LLM_MODEL_ID`、`LLM_API_KEY`、`LLM_BASE_URL`。任务需要工具时，选择支持 Function Calling 的模型。真实调用次数、工具顺序和耗时取决于模型及服务，不应沿用离线脚本的固定结果。
+
+测试入口：`python -m pytest tests/test_runtime_contract.py tests/test_runtime_features_example.py`。测试使用离线响应或本地资源；异步文本与工具片段的传输方式见[流式与 SSE](streaming-sse-guide.md)。

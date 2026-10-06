@@ -8,6 +8,7 @@
 import json
 import uuid
 import re
+from html import escape
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from pathlib import Path
@@ -33,7 +34,8 @@ class TraceLogger:
         self,
         output_dir: str = "memory/traces",
         sanitize: bool = True,
-        html_include_raw_response: bool = False
+        html_include_raw_response: bool = False,
+        sanitizer=None,
     ):
         """初始化 TraceLogger
         
@@ -45,6 +47,10 @@ class TraceLogger:
         self.output_dir = Path(output_dir)
         self.sanitize = sanitize
         self.html_include_raw = html_include_raw_response
+        if sanitizer is not None and not callable(sanitizer):
+            raise TypeError("sanitizer must be callable")
+        self.sanitizer = sanitizer
+        self._closed = False
         
         # 生成会话 ID
         self.session_id = self._generate_session_id()
@@ -93,6 +99,8 @@ class TraceLogger:
             payload: 事件数据
             step: ReAct 循环的步骤序号（可选）
         """
+        if self._closed:
+            raise RuntimeError("TraceLogger is closed")
         # 构造事件对象
         event_obj = {
             "ts": datetime.now().isoformat(),
@@ -106,6 +114,8 @@ class TraceLogger:
         if self.sanitize:
             event_obj = self._sanitize_event(event_obj)
         
+        if self.sanitize and self.sanitizer:
+            event_obj = self.sanitizer(event_obj)
         # 追加到缓存
         self._events.append(event_obj)
         
@@ -142,16 +152,18 @@ class TraceLogger:
         """
         if isinstance(value, str):
             # 脱敏字符串
-            # API Key: sk-xxx -> sk-***
-            value = re.sub(r'sk-[a-zA-Z0-9]+', 'sk-***', value)
-            # Bearer Token: Bearer xxx -> Bearer ***
-            value = re.sub(r'Bearer\s+[a-zA-Z0-9_\-]+', 'Bearer ***', value)
+            # API 密钥脱敏：sk-xxx -> sk-***
+            value = re.sub(r'(?:sk-|tvly-)[a-zA-Z0-9_-]+', '[REDACTED]', value)
+            # Bearer 令牌脱敏：Bearer xxx -> Bearer ***
+            value = re.sub(r'(?i)Bearer\s+[^\s\"\'<>]+', 'Bearer ***', value)
             # 路径中的用户名
             value = re.sub(r'(/Users/|/home/|C:\\Users\\)[^/\\]+', r'\1***', value)
             return value
         elif isinstance(value, dict):
             # 递归处理字典
-            return {k: self._sanitize_value(v) for k, v in value.items()}
+            sensitive = {"apikey", "authorization", "password", "secret", "token", "accesstoken", "refreshtoken", "clientsecret", "cookie", "setcookie"}
+            return {k: "[REDACTED]" if re.sub(r"[^a-z0-9]", "", str(k).lower()) in sensitive
+                    else self._sanitize_value(v) for k, v in value.items()}
         elif isinstance(value, list):
             # 递归处理列表
             return [self._sanitize_value(item) for item in value]
@@ -167,6 +179,8 @@ class TraceLogger:
         2. 写入 HTML 尾部（包含统计面板）
         3. 关闭所有文件
         """
+        if self._closed:
+            return
         # 计算统计数据
         stats = self._compute_stats()
 
@@ -176,6 +190,7 @@ class TraceLogger:
         # 关闭文件
         self.jsonl_file.close()
         self.html_file.close()
+        self._closed = True
 
         print(f"✅ Trace 已保存:")
         print(f"   JSONL: {self.jsonl_path}")
@@ -191,7 +206,7 @@ class TraceLogger:
             "total_steps": 0,
             "total_tokens": 0,
             "total_cost": 0.0,
-            "tool_calls": {},  # {tool_name: count}
+            "tool_calls": {},  # 按工具名称统计调用次数：{tool_name: count}
             "errors": [],
             "duration_seconds": 0.0,
             "model_calls": 0,
@@ -395,8 +410,8 @@ class TraceLogger:
 
     def _write_html_event(self, event: Dict):
         """写入单个事件的 HTML 片段（增量写入）"""
-        event_type = event["event"]
-        step = event.get("step", "")
+        event_type = escape(str(event["event"]))
+        step = escape(str(event.get("step") or "-"))
         timestamp = event["ts"]
         payload = event.get("payload", {})
 
@@ -415,7 +430,14 @@ class TraceLogger:
         details_id = f"details-{len(self._events)}"
 
         # 格式化 payload
-        payload_json = json.dumps(payload, indent=2, ensure_ascii=False)
+        def visible(value):
+            if isinstance(value, dict):
+                return {k: visible(v) for k, v in value.items()
+                        if self.html_include_raw or k != "raw_response"}
+            if isinstance(value, list):
+                return [visible(v) for v in value]
+            return value
+        payload_json = escape(json.dumps(visible(payload), indent=2, ensure_ascii=False))
 
         # 生成事件 HTML
         event_html = f"""
@@ -439,7 +461,7 @@ class TraceLogger:
         # 构建工具调用统计表格
         tool_stats_rows = ""
         for tool_name, count in sorted(stats["tool_calls"].items(), key=lambda x: x[1], reverse=True):
-            tool_stats_rows += f"<tr><td>{tool_name}</td><td>{count}</td></tr>\n"
+            tool_stats_rows += f"<tr><td>{escape(str(tool_name))}</td><td>{count}</td></tr>\n"
 
         # 构建错误列表
         error_list_html = ""
@@ -449,7 +471,7 @@ class TraceLogger:
                 step = error.get("step", "?")
                 error_type = error.get("type", "UNKNOWN")
                 message = error.get("message", "")
-                error_items += f"<li>Step {step}: <strong>{error_type}</strong> - {message}</li>\n"
+                error_items += f"<li>Step {escape(str(step))}: <strong>{escape(str(error_type))}</strong> - {escape(str(message))}</li>\n"
             error_list_html = f"""
         <h3>❌ 错误列表 ({len(stats["errors"])})</h3>
         <ul class="error-list">

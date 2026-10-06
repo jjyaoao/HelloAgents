@@ -1,587 +1,140 @@
-# HelloAgents 自定义工具开发指南
+# 自定义工具：声明、执行与组合
 
-> 本指南帮助你快速创建和注册自己的自定义工具，与框架内置工具无缝集成
+工具把一项可调用操作封装成名称、参数声明和执行结果。定义应描述操作本身；具体读取哪个文件、搜索什么主题，由用户任务或提示词提供。
 
----
+## 目录
 
-## 📚 目录
+- [一个可运行工具](#一个可运行工具)
+- [完整参数 Schema](#完整参数-schema)
+- [函数与异步调用](#函数与异步调用)
+- [把多个动作展开为工具](#把多个动作展开为工具)
+- [注册与组合](#注册与组合)
+- [接入 Agent 与验证](#接入-agent-与验证)
 
-- [快速开始](#快速开始)
-- [三种实现方式](#三种实现方式)
-- [工具模板](#工具模板)
-- [实战示例](#实战示例)
-- [最佳实践](#最佳实践)
-- [常见问题](#常见问题)
+## 一个可运行工具
 
----
-
-## 🚀 快速开始
-
-### 安装框架
-
-```bash
-pip install hello-agents
-```
-
-### 最简单的自定义工具
+在源码根目录执行 `python -m pip install -r requirements.txt`。下面不需要密钥：
 
 ```python
-from hello_agents.tools import Tool, ToolParameter, ToolResponse
+from hello_agents.tools import Tool, ToolParameter, ToolRegistry, ToolResponse
 from hello_agents.tools.errors import ToolErrorCode
 
-class MyFirstTool(Tool):
-    """我的第一个自定义工具"""
-    
+class WordCountTool(Tool):
     def __init__(self):
-        super().__init__(
-            name="my_first_tool",
-            description="这是我的第一个自定义工具，用于演示基本用法"
-        )
-    
-    def run(self, parameters):
-        """执行工具逻辑"""
-        user_input = parameters.get("input", "")
-        
-        if not user_input:
-            return ToolResponse.error(
-                code=ToolErrorCode.INVALID_PARAM,
-                message="参数 'input' 不能为空"
-            )
-        
-        # 实现你的工具逻辑
-        result = f"处理结果: {user_input.upper()}"
-        
-        return ToolResponse.success(
-            text=result,
-            data={"original": user_input, "processed": user_input.upper()}
-        )
-    
+        super().__init__("character_count", "统计给定文本中的字符数")
+
     def get_parameters(self):
-        """定义工具参数"""
-        return [
-            ToolParameter(
-                name="input",
-                type="string",
-                description="要处理的输入文本",
-                required=True
-            )
-        ]
-```
+        return [ToolParameter(name="text", type="string", description="待统计文本")]
 
-### 注册和使用
-
-```python
-from hello_agents import ToolRegistry, ReActAgent, HelloAgentsLLM
-
-# 1. 创建工具注册表
-registry = ToolRegistry()
-
-# 2. 注册自定义工具（与内置工具完全一致）
-registry.register_tool(MyFirstTool())
-
-# 3. 创建 Agent
-llm = HelloAgentsLLM()
-agent = ReActAgent("assistant", llm, tool_registry=registry)
-
-# 4. 使用工具
-response = agent.run("使用 my_first_tool 处理文本 'hello world'")
-print(response)
-```
-
----
-
-## 🎯 三种实现方式
-
-HelloAgents 提供三种渐进式的工具实现方式，适应不同复杂度的需求：
-
-### 方式 1：函数式工具（最简单）
-
-适合简单的一次性工具，无需继承 Tool 类。
-
-```python
-from hello_agents import ToolRegistry
-
-def simple_calculator(a: int, b: int, operation: str = "add") -> str:
-    """简单计算器
-    
-    Args:
-        a: 第一个数字
-        b: 第二个数字
-        operation: 运算类型 (add/sub/mul/div)
-    """
-    if operation == "add":
-        result = a + b
-    elif operation == "sub":
-        result = a - b
-    elif operation == "mul":
-        result = a * b
-    elif operation == "div":
-        result = a / b if b != 0 else "错误：除数不能为零"
-    else:
-        return "错误：不支持的运算"
-    
-    return f"计算结果: {result}"
-
-# 注册函数式工具
-registry = ToolRegistry()
-registry.register_function(
-    func=simple_calculator,
-    name="simple_calc",
-    description="执行简单的数学运算"
-)
-```
-
-### 方式 2：标准工具类（推荐）
-
-继承 `Tool` 基类，实现完整的工具功能。
-
-```python
-from hello_agents.tools import Tool, ToolParameter, ToolResponse
-from hello_agents.tools.errors import ToolErrorCode
-
-class WeatherTool(Tool):
-    """天气查询工具"""
-    
-    def __init__(self, api_key: str):
-        super().__init__(
-            name="weather",
-            description="查询指定城市的天气信息"
-        )
-        self.api_key = api_key
-    
     def run(self, parameters):
-        city = parameters.get("city")
-        
-        # 调用天气 API（示例）
-        weather_data = self._fetch_weather(city)
-        
-        if weather_data is None:
-            return ToolResponse.error(
-                code=ToolErrorCode.NOT_FOUND,
-                message=f"未找到城市 '{city}' 的天气信息"
-            )
-        
-        return ToolResponse.success(
-            text=f"{city} 的天气: {weather_data['description']}, 温度: {weather_data['temp']}°C",
-            data=weather_data,
-            stats={"api_calls": 1}
-        )
-    
-    def get_parameters(self):
-        return [
-            ToolParameter(
-                name="city",
-                type="string",
-                description="要查询的城市名称",
-                required=True
-            )
-        ]
-    
-    def _fetch_weather(self, city):
-        """调用天气 API（示例实现）"""
-        # 实际实现中调用真实的天气 API
-        return {
-            "city": city,
-            "description": "晴天",
-            "temp": 25,
-            "humidity": 60
-        }
-```
+        text = parameters.get("text")
+        if not isinstance(text, str):
+            return ToolResponse.error(ToolErrorCode.INVALID_PARAM, "text 必须是字符串")
+        return ToolResponse.success("字符统计完成", data={"characters": len(text)})
 
-### 方式 3：可展开工具（高级）
-
-使用 `@tool_action` 装饰器，将一个工具展开为多个子工具。
-
-```python
-from hello_agents.tools import Tool, tool_action, ToolResponse
-
-class DatabaseTool(Tool):
-    """数据库操作工具（可展开）"""
-    
-    def __init__(self, connection_string: str):
-        super().__init__(
-            name="database",
-            description="数据库操作工具集",
-            expandable=True  # 标记为可展开
-        )
-        self.connection_string = connection_string
-    
-    @tool_action("db_query", "执行数据库查询")
-    def query(self, sql: str, limit: int = 100) -> ToolResponse:
-        """执行 SQL 查询
-        
-        Args:
-            sql: SQL 查询语句
-            limit: 返回结果的最大行数
-        """
-        # 执行查询逻辑
-        results = self._execute_query(sql, limit)
-        
-        return ToolResponse.success(
-            text=f"查询成功，返回 {len(results)} 行",
-            data={"results": results, "row_count": len(results)}
-        )
-    
-    @tool_action("db_insert", "插入数据")
-    def insert(self, table: str, data: dict) -> ToolResponse:
-        """插入数据到表
-        
-        Args:
-            table: 表名
-            data: 要插入的数据（字典格式）
-        """
-        # 执行插入逻辑
-        row_id = self._execute_insert(table, data)
-        
-        return ToolResponse.success(
-            text=f"数据插入成功，ID: {row_id}",
-            data={"inserted_id": row_id}
-        )
-    
-    def run(self, parameters):
-        """普通模式下的执行方法（可选）"""
-        return ToolResponse.error(
-            code="NOT_IMPLEMENTED",
-            message="请使用展开后的子工具（db_query, db_insert）"
-        )
-    
-    def get_parameters(self):
-        return []
-    
-    def _execute_query(self, sql, limit):
-        # 实际数据库查询实现
-        return []
-    
-    def _execute_insert(self, table, data):
-        # 实际数据库插入实现
-        return 1
-```
-
-注册可展开工具：
-
-```python
 registry = ToolRegistry()
-
-# 注册工具（自动展开为 db_query 和 db_insert）
-db_tool = DatabaseTool(connection_string="sqlite:///mydb.db")
-registry.register_tool(db_tool)
-
-# 框架会自动注册两个子工具：
-# - database_query
-# - database_insert
+registry.register_tool(WordCountTool())
+result = registry.execute_tool("character_count", {"text": "杭州旅行"})
+assert result.data["characters"] == 4
+print(result.to_dict())
 ```
 
----
+`run(dict)` 返回 `ToolResponse`。`text` 说明结果，`data` 保存可检查的载荷；错误说明应帮助调用者判断需要改参数、补资料还是停止操作。通过注册表执行可以应用计时、输入上下文和熔断规则；直接调用工具方法不会经过注册表熔断。
 
-## 📝 工具模板
+## 完整参数 Schema
 
-我们提供了三个开箱即用的模板，位于 `examples/custom_tools/` 目录：
-
-1. **simple_tool_template.py** - 简单工具模板（最小实现）
-2. **advanced_tool_template.py** - 高级工具模板（完整特性）
-3. **expandable_tool_template.py** - 可展开工具模板（多功能）
-
----
-
-## 🎓 实战示例
-
-框架提供了 4 个真实场景的示例工具，位于 `examples/custom_tools/` 目录：
-
-### 1. weather_tool.py - 天气查询工具
-演示如何调用外部 API 并处理响应。
-
-### 2. database_tool.py - 数据库查询工具
-演示如何管理外部资源连接和错误处理。
-
-### 3. code_formatter_tool.py - 代码格式化工具
-演示复杂的文本处理逻辑和参数验证。
-
-### 4. multi_function_tool.py - 多功能工具
-演示可展开工具的完整实现。
-
----
-
-## ✅ 最佳实践
-
-### 1. 错误处理
-
-始终使用标准错误码，提供清晰的错误信息：
+`ToolParameter` 使用 `name`、`type`、`description`、`required`、`default` 和可选 `json_schema`。提供 `json_schema` 时，以该片段表达参数结构：
 
 ```python
-from hello_agents.tools.errors import ToolErrorCode
+from hello_agents.tools import ToolParameter
 
-# ✅ 好的做法
-return ToolResponse.error(
-    code=ToolErrorCode.INVALID_PARAM,
-    message="参数 'city' 不能为空",
-    context={"provided_params": parameters}
-)
-
-# ❌ 不好的做法
-return ToolResponse.error(
-    code="ERROR",
-    message="出错了"
-)
-```
-
-### 2. 参数验证
-
-在 `run()` 方法开始时验证所有必需参数：
-
-```python
-def run(self, parameters):
-    # 验证必需参数
-    required = ["city", "date"]
-    for param in required:
-        if param not in parameters or not parameters[param]:
-            return ToolResponse.error(
-                code=ToolErrorCode.INVALID_PARAM,
-                message=f"缺少必需参数: {param}"
-            )
-
-    # 继续执行工具逻辑
-    ...
-```
-
-### 3. 结构化数据
-
-返回结构化的 `data` 字段，方便后续处理：
-
-```python
-return ToolResponse.success(
-    text="查询成功，找到 3 条记录",
-    data={
-        "records": [...],
-        "count": 3,
-        "query_time_ms": 45
+routes = ToolParameter(
+    name="routes", type="array", description="要检查的路线列表",
+    json_schema={
+        "type": "array", "minItems": 1,
+        "items": {
+            "type": "object",
+            "properties": {"mode": {"type": "string", "enum": ["walk", "transit"]}},
+            "required": ["mode"], "additionalProperties": False,
+        },
     },
-    stats={
-        "time_ms": 50,
-        "api_calls": 1
-    }
 )
+assert routes.json_schema["items"]["required"] == ["mode"]
 ```
 
-### 4. 添加日志
+`Tool.to_openai_schema()` 是模型工具声明入口。需要跨字段约束时重写该方法，返回完整函数声明。手工片段中的 `$ref` 以整个 `parameters` 为根；跨参数定义宜集中在完整 Schema 中管理。声明生成错误会在注册时暴露。
 
-使用框架的日志系统记录关键操作：
+Schema 描述允许的结构，不能代替业务检查。例如金额有效还需知道币种、范围、权限和重复执行后果。类型注解也不会自动把字典转成 Pydantic 实例。对象数组应明确声明 `items`，不要让模型猜测字段。
+
+## 函数与异步调用
+
+单输入函数可以直接注册；多参数使用 Tool 或 action。异步函数通过 `aexecute_tool()` 真正等待执行：
 
 ```python
-import logging
+import asyncio
+from hello_agents.tools import ToolRegistry, ToolResponse
 
-logger = logging.getLogger(__name__)
+async def lookup(query):
+    await asyncio.sleep(0)
+    return ToolResponse.success("本地查询完成", data={"query": query})
 
-def run(self, parameters):
-    logger.info(f"执行工具 {self.name}，参数: {parameters}")
+async def main():
+    registry = ToolRegistry()
+    registry.register_function(lookup, name="lookup", description="查询指定条件；input 为条件")
+    response = await registry.aexecute_tool("lookup", "杭州")
+    assert response.data["query"] == "杭州"
 
-    try:
-        result = self._do_work(parameters)
-        logger.info(f"工具执行成功")
-        return ToolResponse.success(text=result)
-    except Exception as e:
-        logger.error(f"工具执行失败: {e}")
-        return ToolResponse.error(
-            code=ToolErrorCode.EXECUTION_ERROR,
-            message=str(e)
-        )
+asyncio.run(main())
 ```
 
-### 5. 使用 run_with_timing()
+函数工具向模型暴露一个 `input` 字符串参数。原生异步函数不能通过同步 `execute_tool()` 调用，该入口返回 `INVALID_PARAM`。异步注册表在线程中运行同步函数；无法强制取消已经进入线程的副作用。
 
-让框架自动添加时间统计：
+自定义 Tool 重写 `arun()` 可接入异步客户端，`run()` 则提供同步实现或明确返回不支持的错误。两种入口都返回 ToolResponse，不把 coroutine 当作成功结果。调用方式和取消边界见[异步指南](async-agent-guide.md)。
 
-```python
-# 在 Agent 中使用
-response = tool.run_with_timing(parameters)
-# 自动添加 stats["time_ms"] 和 context["params_input"]
-```
-
-### 6. 异步支持
-
-如果工具涉及 I/O 操作，考虑实现异步版本：
+## 把多个动作展开为工具
 
 ```python
-async def arun(self, parameters):
-    """异步执行工具"""
-    # 使用 aiohttp, asyncpg 等异步库
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            data = await response.json()
+import asyncio
+from hello_agents.tools import Tool, ToolResponse, ToolRegistry, tool_action
 
-    return ToolResponse.success(text="...", data=data)
-```
+class Totals(Tool):
+    def __init__(self):
+        super().__init__("totals", "数值列表操作", expandable=True)
 
-### 7. 资源管理
-
-使用上下文管理器管理资源：
-
-```python
-class DatabaseTool(Tool):
-    def __init__(self, connection_string):
-        super().__init__(name="db", description="...")
-        self.connection_string = connection_string
-        self._connection = None
-
-    def __enter__(self):
-        self._connection = self._create_connection()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._connection:
-            self._connection.close()
-```
-
-### 8. 文档字符串
-
-为工具和参数提供清晰的文档：
-
-```python
-class MyTool(Tool):
-    """我的自定义工具
-
-    这个工具用于...
-
-    使用示例:
-        >>> tool = MyTool()
-        >>> response = tool.run({"input": "test"})
-
-    注意事项:
-        - 参数 'input' 不能为空
-        - 需要配置 API_KEY 环境变量
-    """
-```
-
----
-
-## ❓ 常见问题
-
-### Q1: 如何在工具中访问 Agent 的上下文？
-
-工具应该是无状态的，不应该直接访问 Agent。如果需要上下文信息，通过参数传递：
-
-```python
-# ❌ 不推荐
-class MyTool(Tool):
-    def __init__(self, agent):
-        self.agent = agent  # 不要这样做
-
-# ✅ 推荐
-class MyTool(Tool):
-    def run(self, parameters):
-        context = parameters.get("context", {})
-        # 使用传入的上下文
-```
-
-### Q2: 如何处理长时间运行的任务？
-
-使用异步执行或返回 PARTIAL 状态：
-
-```python
-def run(self, parameters):
-    # 启动长时间任务
-    task_id = self._start_background_task(parameters)
-
-    return ToolResponse.partial(
-        text=f"任务已启动，ID: {task_id}",
-        data={"task_id": task_id, "status": "running"}
-    )
-```
-
-### Q3: 如何在工具之间共享数据？
-
-使用 ToolRegistry 的共享存储：
-
-```python
-# 工具 A 保存数据
-registry.set_shared_data("key", value)
-
-# 工具 B 读取数据
-value = registry.get_shared_data("key")
-```
-
-### Q4: 如何测试自定义工具？
-
-编写单元测试：
-
-```python
-import pytest
-from my_tools import MyCustomTool
-
-def test_my_tool_success():
-    tool = MyCustomTool()
-    response = tool.run({"input": "test"})
-
-    assert response.status == "success"
-    assert "test" in response.text
-    assert response.data["processed"] == "TEST"
-
-def test_my_tool_error():
-    tool = MyCustomTool()
-    response = tool.run({})  # 缺少参数
-
-    assert response.status == "error"
-    assert response.error_info["code"] == "INVALID_PARAM"
-```
-
-### Q5: 如何调试工具执行？
-
-启用详细日志：
-
-```python
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
-
-# 或者只启用工具日志
-logging.getLogger("hello_agents.tools").setLevel(logging.DEBUG)
-```
-
-### Q6: 工具可以调用其他工具吗？
-
-可以，但需要通过 ToolRegistry：
-
-```python
-class ComposeTool(Tool):
-    def __init__(self, registry):
-        super().__init__(name="compose", description="...")
-        self.registry = registry
+    def get_parameters(self):
+        return []
 
     def run(self, parameters):
-        # 调用其他工具
-        response1 = self.registry.execute_tool("tool_a", {"input": "..."})
-        response2 = self.registry.execute_tool("tool_b", {"data": response1.data})
+        return ToolResponse.error("INVALID_PARAM", "请使用展开后的 totals_sum")
 
-        return ToolResponse.success(
-            text="组合执行完成",
-            data={"result": response2.data}
-        )
+    @tool_action("totals_sum", "计算整数列表之和")
+    async def total(self, values: list[int]):
+        if not isinstance(values, list) or any(type(v) is not int for v in values):
+            return ToolResponse.error("INVALID_PARAM", "values 必须是整数列表")
+        await asyncio.sleep(0)
+        return ToolResponse.success("求和完成", data={"sum": sum(values)})
+
+async def main():
+    registry = ToolRegistry()
+    registry.register_tool(Totals())
+    result = await registry.aexecute_tool("totals_sum", {"values": [2, 3]})
+    assert result.data["sum"] == 5
+
+asyncio.run(main())
 ```
 
----
+默认注册会展开 `@tool_action`，从方法签名和类型注解生成声明，包括嵌套数组及其引用。`auto_expand=False` 注册父工具本身，此时父工具必须实现自己的有效分派逻辑。
 
-## 📚 相关文档
+## 注册与组合
 
-- [工具响应协议](./tool-response-protocol.md) - ToolResponse 详细说明
-- [文件操作工具](./file_tools.md) - 内置文件工具示例
-- [Skills 知识外化](./skills-usage-guide.md) - Skills 系统集成
+Tool、函数和展开 action 共用名称空间。重复名称抛出 `ValueError`；确实需要替换时显式传 `replace=True`。展开注册先检查全部名称与声明，失败不留下半组工具。
 
----
+`registry.fork(["rag_search", "rag_read"])` 创建独立的选定名称映射，函数也适用；省略参数复制全部，空列表得到空表，未知名称报错。名称映射、函数元数据和读取缓存独立，Tool/函数实例及熔断器共享。需要完整状态隔离时应创建独立工具实例和存储。
 
-## 🤝 贡献你的工具
+`unregister(name)` 删除名称。`get_tool(name)` 取得 Tool，`get_function(name)` 取得函数；`list_tools()` 包含两者，`get_all_tools()` 只返回 Tool 实例。不要用后者误判函数是否已注册。
 
-如果你开发了通用的工具，欢迎贡献到 HelloAgents 框架：
+## 接入 Agent 与验证
 
-1. Fork 项目仓库
-2. 在 `hello_agents/tools/builtin/` 添加你的工具
-3. 编写测试和文档
-4. 提交 Pull Request
+将注册表通过 `tool_registry=registry` 传给 Agent。任务要求写在 `agent.run(...)` 中；模型依据声明生成参数，运行器执行并回填。[Function Calling](function-calling-architecture.md)展示消息关联，[工具响应协议](tool-response-protocol.md)说明如何保留来源和失败状态。
 
----
-
-## 📞 获取帮助
-
-- GitHub Issues: https://github.com/your-repo/hello-agents/issues
-- 文档: https://hello-agents.readthedocs.io
-- 社区讨论: https://github.com/your-repo/hello-agents/discussions
-
-
+完整示例：`python -X utf8 -m examples.agents.runtime_features --workspace workspace/runtime-demo`。测试：`python -m pytest tests/test_tool_contract_fixes.py`。应检查 Schema 是否包含真实字段、输入不合法时是否明确拒绝、异步操作是否等待完成，以及有副作用操作失败后的实际状态。

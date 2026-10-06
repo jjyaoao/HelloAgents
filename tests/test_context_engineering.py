@@ -12,10 +12,10 @@ import os
 import json
 from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
-from dotenv import load_dotenv
+
 
 # 加载环境变量
-load_dotenv()
+
 
 from hello_agents.core.message import Message
 from hello_agents.context.history import HistoryManager
@@ -296,13 +296,13 @@ class TestObservationTruncator:
 
 
 class TestAgentIntegration:
-    """测试 Agent 集成上下文工程（真实 API 调用）"""
+    """本地组件集成；真实服务用例显式标记 live。"""
 
     def test_agent_history_manager_integration(self):
         """测试 Agent 集成 HistoryManager"""
         from hello_agents import SimpleAgent, HelloAgentsLLM
 
-        llm = HelloAgentsLLM()
+        llm = Mock(model="offline-components")
         config = Config(min_retain_rounds=2)
         agent = SimpleAgent("测试助手", llm, config=config)
 
@@ -314,38 +314,45 @@ class TestAgentIntegration:
         agent.add_message(Message("test", "user"))
         assert len(agent.get_history()) == 1
 
-        # 测试向后兼容的 _history 属性
-        assert len(agent._history) == 1
+        assert agent.history_manager.get_history()[0].content == "test"
 
         print("✅ Agent HistoryManager 集成测试通过")
 
     def test_agent_auto_compression(self):
-        """测试 Agent 自动压缩"""
-        from hello_agents import SimpleAgent, HelloAgentsLLM
+        """先低于预算，再跨越 token 阈值；使用测试替身，不调用模型。"""
+        from hello_agents import SimpleAgent
 
-        llm = HelloAgentsLLM()
-        config = Config(min_retain_rounds=2)
+        llm = Mock()
+        llm.model = "test-capture"
+        config = Config(
+            context_window=240, compression_threshold=0.75, min_retain_rounds=2,
+            trace_enabled=False, skills_enabled=False, session_enabled=False,
+            subagent_enabled=False, todowrite_enabled=False, devlog_enabled=False,
+        )
         agent = SimpleAgent("测试助手", llm, config=config)
+        agent.add_message(Message("短问题", "user"))
+        agent.add_message(Message("短回复", "assistant"))
+        assert all(msg.role != "summary" for msg in agent.get_history())
 
-        # 添加 10 轮对话（超过阈值）
-        for i in range(10):
-            agent.add_message(Message(f"问题{i+1}", "user"))
-            agent.add_message(Message(f"回答{i+1}", "assistant"))
+        added = []
+        for i in range(4):
+            question = Message(f"question-{i}: " + "evidence " * 50, "user")
+            answer = Message(f"answer-{i}: " + "result " * 50, "assistant")
+            added.extend([question, answer])
+            agent.add_message(question)
+            agent.add_message(answer)
 
-        # 应该触发自动压缩
         history = agent.get_history()
-
-        # 验证有 summary 消息
-        has_summary = any(msg.role == "summary" for msg in history)
-        assert has_summary or len(history) < 20  # 要么有摘要，要么已压缩
-
-        print(f"✅ 自动压缩测试通过，历史长度: {len(history)}, 包含摘要: {has_summary}")
+        assert history[0].role == "summary"
+        assert [msg.content for msg in history[-4:]] == [msg.content for msg in added[-4:]]
+        assert agent.history_manager.estimate_rounds() == 2
+        llm.invoke.assert_not_called()
 
     def test_agent_truncator_integration(self):
         """测试 Agent 集成 ObservationTruncator"""
         from hello_agents import SimpleAgent, HelloAgentsLLM
 
-        llm = HelloAgentsLLM()
+        llm = Mock(model="offline-components")
         agent = SimpleAgent("测试助手", llm)
 
         # 验证 ObservationTruncator 已初始化
@@ -354,69 +361,22 @@ class TestAgentIntegration:
 
         print("✅ Agent ObservationTruncator 集成测试通过")
 
-    def test_agent_real_conversation_with_compression(self):
-        """测试真实对话场景下的自动压缩（真实 API 调用）"""
+    @pytest.mark.live
+    def test_agent_real_conversation_with_compression(self, live_llm_config):
+        """真实回答后加入足量本地历史，明确跨越压缩预算。"""
         from hello_agents import SimpleAgent, HelloAgentsLLM
-
-        llm = HelloAgentsLLM()
-        config = Config(
-            min_retain_rounds=3,  # 保留最近 3 轮
-            enable_smart_compression=False  # 使用简单摘要
-        )
-        agent = SimpleAgent("测试助手", llm, config=config)
-
-        print("\n开始真实对话测试...")
-
-        # 进行 8 轮真实对话（会触发压缩）
-        questions = [
-            "你好，请介绍一下自己",
-            "什么是 Python？",
-            "Python 有哪些特点？",
-            "如何学习 Python？",
-            "Python 的应用领域有哪些？",
-            "Python 和 Java 的区别？",
-            "推荐一些 Python 学习资源",
-            "总结一下我们的对话"
-        ]
-
-        for i, question in enumerate(questions):
-            print(f"\n第 {i+1} 轮对话: {question}")
-            try:
-                response = agent.run(question)
-                print(f"回答: {response[:100]}...")  # 只打印前 100 字符
-
-                # 检查历史状态
-                history = agent.get_history()
-                rounds = agent.history_manager.estimate_rounds()
-                has_summary = any(msg.role == "summary" for msg in history)
-
-                print(f"当前历史: {len(history)} 条消息, {rounds} 轮对话, 包含摘要: {has_summary}")
-
-            except Exception as e:
-                print(f"⚠️ 第 {i+1} 轮对话失败: {e}")
-                # 不中断测试，继续下一轮
-
-        # 验证最终状态
-        final_history = agent.get_history()
-        final_rounds = agent.history_manager.estimate_rounds()
-        has_summary = any(msg.role == "summary" for msg in final_history)
-
-        print(f"\n最终状态:")
-        print(f"- 历史消息数: {len(final_history)}")
-        print(f"- 完整轮次数: {final_rounds}")
-        print(f"- 包含摘要: {has_summary}")
-
-        # 验证压缩生效
-        if has_summary:
-            print("✅ 自动压缩已触发")
-            # 找到 summary 消息
-            summary_msg = next(msg for msg in final_history if msg.role == "summary")
-            print(f"摘要内容: {summary_msg.content[:200]}...")
-
-        # 验证保留了最近的轮次
-        assert final_rounds <= config.min_retain_rounds + 1  # 允许 +1 的误差
-
-        print("✅ 真实对话压缩测试通过")
+        config = Config(min_retain_rounds=1, context_window=500,
+                        compression_threshold=0.5, enable_smart_compression=False,
+                        trace_enabled=False, session_enabled=False, skills_enabled=False,
+                        subagent_enabled=False, todowrite_enabled=False, devlog_enabled=False)
+        agent = SimpleAgent("上下文服务检查", HelloAgentsLLM(**live_llm_config), config=config)
+        assert agent.run("用一句中文解释什么是上下文。")
+        assert agent.last_run.status == "completed"
+        for i in range(4):
+            agent.add_message(Message(f"资料{i}: " + "evidence " * 150, "user"))
+            agent.add_message(Message(f"确认{i}: " + "checked " * 150, "assistant"))
+        assert any(message.role == "summary" for message in agent.get_history())
+        assert agent.history_manager.estimate_rounds() <= config.min_retain_rounds
 
 
 if __name__ == "__main__":

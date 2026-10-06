@@ -30,13 +30,14 @@ CATEGORIES = {
     "solution": "问题解决方案",
     "refactor": "重构决策",
     "test": "测试相关记录",
-    "performance": "性能优化记录"
+    "performance": "性能优化记录",
 }
 
 
 @dataclass
 class DevLogEntry:
     """单条开发日志"""
+
     id: str
     timestamp: str
     category: str
@@ -45,18 +46,15 @@ class DevLogEntry:
 
     @classmethod
     def create(
-        cls,
-        category: str,
-        content: str,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> 'DevLogEntry':
+        cls, category: str, content: str, metadata: Optional[Dict[str, Any]] = None
+    ) -> "DevLogEntry":
         """创建新的日志条目"""
         return cls(
             id=f"log-{uuid.uuid4().hex[:8]}",
             timestamp=datetime.now().isoformat(),
             category=category,
             content=content,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -64,7 +62,7 @@ class DevLogEntry:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'DevLogEntry':
+    def from_dict(cls, data: Dict[str, Any]) -> "DevLogEntry":
         """从字典创建"""
         return cls(**data)
 
@@ -72,6 +70,7 @@ class DevLogEntry:
 @dataclass
 class DevLogStore:
     """开发日志存储引擎"""
+
     session_id: str
     agent_name: str
     created_at: str
@@ -79,7 +78,7 @@ class DevLogStore:
     entries: List[DevLogEntry]
 
     @classmethod
-    def create(cls, session_id: str, agent_name: str) -> 'DevLogStore':
+    def create(cls, session_id: str, agent_name: str) -> "DevLogStore":
         """创建新的日志存储"""
         now = datetime.now().isoformat()
         return cls(
@@ -87,7 +86,7 @@ class DevLogStore:
             agent_name=agent_name,
             created_at=now,
             updated_at=now,
-            entries=[]
+            entries=[],
         )
 
     def append(self, entry: DevLogEntry):
@@ -99,7 +98,7 @@ class DevLogStore:
         self,
         category: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
     ) -> List[DevLogEntry]:
         """过滤日志条目"""
         filtered = self.entries
@@ -111,7 +110,8 @@ class DevLogStore:
         # 按标签过滤
         if tags:
             filtered = [
-                e for e in filtered
+                e
+                for e in filtered
                 if any(tag in e.metadata.get("tags", []) for tag in tags)
             ]
 
@@ -123,10 +123,7 @@ class DevLogStore:
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
-        stats = {
-            "total_entries": len(self.entries),
-            "by_category": {}
-        }
+        stats = {"total_entries": len(self.entries), "by_category": {}}
 
         for entry in self.entries:
             cat = entry.category
@@ -146,19 +143,23 @@ class DevLogStore:
         summary_parts = [f"📝 共 {total} 条日志"]
 
         # 按类别统计
-        cat_summary = ", ".join([
-            f"{cat}({count})"
-            for cat, count in stats["by_category"].items()
-        ])
+        cat_summary = ", ".join(
+            [f"{cat}({count})" for cat, count in stats["by_category"].items()]
+        )
         summary_parts.append(f"分类: {cat_summary}")
 
         # 最近日志
         if recent:
-            recent_summary = "; ".join([
-                f"[{e.category}] {e.content[:30]}..."
-                if len(e.content) > 30 else f"[{e.category}] {e.content}"
-                for e in recent[-3:]  # 只显示最近 3 条
-            ])
+            recent_summary = "; ".join(
+                [
+                    (
+                        f"[{e.category}] {e.content[:30]}..."
+                        if len(e.content) > 30
+                        else f"[{e.category}] {e.content}"
+                    )
+                    for e in recent[-3:]  # 只显示最近 3 条
+                ]
+            )
             summary_parts.append(f"最近: {recent_summary}")
 
         return ". ".join(summary_parts)
@@ -171,11 +172,11 @@ class DevLogStore:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "entries": [e.to_dict() for e in self.entries],
-            "stats": self.get_stats()
+            "stats": self.get_stats(),
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'DevLogStore':
+    def from_dict(cls, data: Dict[str, Any]) -> "DevLogStore":
         """从字典创建"""
         entries = [DevLogEntry.from_dict(e) for e in data.get("entries", [])]
         return cls(
@@ -183,7 +184,7 @@ class DevLogStore:
             agent_name=data["agent_name"],
             created_at=data["created_at"],
             updated_at=data["updated_at"],
-            entries=entries
+            entries=entries,
         )
 
 
@@ -214,7 +215,7 @@ class DevLogTool(Tool):
         session_id: str,
         agent_name: str = "Agent",
         project_root: str = ".",
-        persistence_dir: str = "memory/devlogs"
+        persistence_dir: str = "memory/devlogs",
     ):
         """初始化 DevLogTool
 
@@ -244,7 +245,7 @@ class DevLogTool(Tool):
   "content": "选择使用 Redis 作为缓存层",
   "metadata": {{"tags": ["architecture", "cache"]}}
 }}""",
-            expandable=False
+            expandable=False,
         )
         self.session_id = session_id
         self.agent_name = agent_name
@@ -267,33 +268,36 @@ class DevLogTool(Tool):
                 type="string",
                 description="操作类型：append（追加）、read（读取）、summary（摘要）、clear（清空）",
                 required=True,
-                enum=["append", "read", "summary", "clear"]
+                json_schema={
+                    "type": "string",
+                    "enum": ["append", "read", "summary", "clear"],
+                },
             ),
             ToolParameter(
                 name="category",
                 type="string",
                 description=f"日志类别（append 时必填）：{', '.join(CATEGORIES.keys())}",
                 required=False,
-                enum=list(CATEGORIES.keys())
+                json_schema={"type": "string", "enum": list(CATEGORIES.keys())},
             ),
             ToolParameter(
                 name="content",
                 type="string",
                 description="日志内容（append 时必填）",
-                required=False
+                required=False,
             ),
             ToolParameter(
                 name="metadata",
                 type="object",
-                description="元数据（可选），如 {\"tags\": [\"cache\"], \"step\": 3, \"related_tool\": \"WriteTool\"}",
-                required=False
+                description='元数据（可选），如 {"tags": ["cache"], "step": 3, "related_tool": "WriteTool"}',
+                required=False,
             ),
             ToolParameter(
                 name="filter",
                 type="object",
-                description="过滤条件（read 时可选），如 {\"category\": \"decision\", \"tags\": [\"architecture\"], \"limit\": 10}",
-                required=False
-            )
+                description='过滤条件（read 时可选），如 {"category": "decision", "tags": ["architecture"], "limit": 10}',
+                required=False,
+            ),
         ]
 
     def run(self, parameters: Dict[str, Any]) -> ToolResponse:
@@ -311,14 +315,12 @@ class DevLogTool(Tool):
                 return self._handle_clear()
             else:
                 return ToolResponse.error(
-                    code=ToolErrorCode.INVALID_PARAMETERS,
-                    message=f"未知操作：{action}"
+                    code=ToolErrorCode.INVALID_PARAM, message=f"未知操作：{action}"
                 )
 
         except Exception as e:
             return ToolResponse.error(
-                code=ToolErrorCode.INTERNAL_ERROR,
-                message=f"DevLog 操作失败：{str(e)}"
+                code=ToolErrorCode.INTERNAL_ERROR, message=f"DevLog 操作失败：{str(e)}"
             )
 
     def _handle_append(self, parameters: Dict[str, Any]) -> ToolResponse:
@@ -329,20 +331,18 @@ class DevLogTool(Tool):
         # 参数校验
         if not category:
             return ToolResponse.error(
-                code=ToolErrorCode.INVALID_PARAM,
-                message="追加日志时必须指定 category"
+                code=ToolErrorCode.INVALID_PARAM, message="追加日志时必须指定 category"
             )
 
         if category not in CATEGORIES:
             return ToolResponse.error(
                 code=ToolErrorCode.INVALID_PARAM,
-                message=f"无效的类别：{category}，支持的类别：{', '.join(CATEGORIES.keys())}"
+                message=f"无效的类别：{category}，支持的类别：{', '.join(CATEGORIES.keys())}",
             )
 
         if not content:
             return ToolResponse.error(
-                code=ToolErrorCode.INVALID_PARAM,
-                message="追加日志时必须指定 content"
+                code=ToolErrorCode.INVALID_PARAM, message="追加日志时必须指定 content"
             )
 
         # 创建日志条目
@@ -361,9 +361,9 @@ class DevLogTool(Tool):
             data={
                 "log_id": entry.id,
                 "timestamp": entry.timestamp,
-                "category": entry.category
+                "category": entry.category,
             },
-            stats=self.store.get_stats()
+            stats=self.store.get_stats(),
         )
 
     def _handle_read(self, parameters: Dict[str, Any]) -> ToolResponse:
@@ -379,9 +379,7 @@ class DevLogTool(Tool):
 
         if not entries:
             return ToolResponse.success(
-                text="📝 未找到匹配的日志",
-                data={"entries": []},
-                stats={"matched": 0}
+                text="📝 未找到匹配的日志", data={"entries": []}, stats={"matched": 0}
             )
 
         # 格式化输出
@@ -390,23 +388,22 @@ class DevLogTool(Tool):
             lines.append(f"[{entry.category}] {entry.timestamp}")
             lines.append(f"  {entry.content}")
             if entry.metadata:
-                lines.append(f"  元数据: {json.dumps(entry.metadata, ensure_ascii=False)}")
+                lines.append(
+                    f"  元数据: {json.dumps(entry.metadata, ensure_ascii=False)}"
+                )
             lines.append("")
 
         return ToolResponse.success(
             text="\n".join(lines),
             data={"entries": [e.to_dict() for e in entries]},
-            stats={"matched": len(entries)}
+            stats={"matched": len(entries)},
         )
 
     def _handle_summary(self) -> ToolResponse:
         """处理摘要操作"""
         summary = self.store.generate_summary()
 
-        return ToolResponse.success(
-            text=summary,
-            data=self.store.get_stats()
-        )
+        return ToolResponse.success(text=summary, data=self.store.get_stats())
 
     def _handle_clear(self) -> ToolResponse:
         """处理清空操作"""
@@ -418,8 +415,7 @@ class DevLogTool(Tool):
         self._persist()
 
         return ToolResponse.success(
-            text=f"✅ 已清空 {old_count} 条日志",
-            data={"cleared_count": old_count}
+            text=f"✅ 已清空 {old_count} 条日志", data={"cleared_count": old_count}
         )
 
     def _persist(self):
@@ -428,8 +424,8 @@ class DevLogTool(Tool):
         filepath = self.persistence_dir / filename
 
         # 原子写入
-        temp_path = filepath.with_suffix('.tmp')
-        with open(temp_path, 'w', encoding='utf-8') as f:
+        temp_path = filepath.with_suffix(".tmp")
+        with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(self.store.to_dict(), f, indent=2, ensure_ascii=False)
 
         temp_path.replace(filepath)
@@ -441,10 +437,9 @@ class DevLogTool(Tool):
 
         if filepath.exists():
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 self.store = DevLogStore.from_dict(data)
             except Exception:
                 # 加载失败，使用新的存储
                 pass
-

@@ -1,528 +1,94 @@
-# 开发日志系统指南（DevLog System）
+# DevLog：记录决策与阶段结果
 
-## 📖 概述
+DevLog 保存任务中的决策、进展、问题和解决办法。它适合留下简短、可追踪的工作记录；自动运行轨迹请使用 [TraceLogger](observability-guide.md)。
 
-**DevLogTool** 是 HelloAgents 框架的结构化开发日志工具，用于记录 Agent 的开发决策、问题、解决方案等关键信息。
+## 📚 目录
 
-### 核心特性
+- [最小示例](#最小示例)
+- [参数](#参数)
+- [一次任务中记录什么](#一次任务中记录什么)
+- [组合与边界](#组合与边界)
+- [常见问题](#常见问题)
 
-- ✅ **结构化日志**：category + content + metadata
-- ✅ **7 种类别**：decision、progress、issue、solution、refactor、test、performance
-- ✅ **持久化存储**：保存到 `memory/devlogs/`
-- ✅ **过滤查询**：按类别、标签查询
-- ✅ **自动摘要**：生成日志摘要
-
----
-
-## 🚀 快速开始
-
-### 1. 自动集成（零配置）
+## 最小示例
 
 ```python
-from hello_agents import ReActAgent, HelloAgentsLLM, Config
+from tempfile import TemporaryDirectory
+from hello_agents.tools.builtin import DevLogTool
+from hello_agents.tools.response import ToolStatus
 
-# DevLogTool 默认启用
-config = Config(devlog_enabled=True)
-agent = ReActAgent("assistant", HelloAgentsLLM(), config=config)
-
-# Agent 可以直接使用 DevLog 工具
-agent.run("记录开发决策：使用 Redis 作为缓存")
+with TemporaryDirectory() as directory:
+    tool = DevLogTool(session_id="travel-demo", project_root=directory)
+    reply = tool.run({
+        "action": "append", "category": "decision",
+        "content": "第二天优先选择室内景点。",
+        "metadata": {"tags": ["weather"], "source": "用户确认"},
+    })
+    assert reply.status == ToolStatus.SUCCESS
+    restored = DevLogTool(session_id="travel-demo", project_root=directory)
+    records = restored.run({"action": "read", "filter": {"category": "decision", "limit": 5}})
+    assert len(records.data["entries"]) == 1
+    print(restored.run({"action": "summary"}).text)
+    assert restored.run({"action": "clear"}).data["cleared_count"] == 1
 ```
 
-### 2. 手动使用
+同一目录和会话 ID 创建的新实例会读取已保存记录。`append` 返回记录 ID、时间和类别；`read` 返回 `data.entries`；`summary` 整理已有记录，不调用大语言模型。
+
+## 参数
+
+`action` 为 `append`、`read`、`summary`、`clear`。写入时提供 `category`、非空 `content` 及可选 `metadata`。类别包括 `decision`、`progress`、`issue`、`solution`、`refactor`、`test`、`performance`。
+
+读取条件放在 `filter` 对象中，可包含 `category`、`tags` 和 `limit`。`clear` 删除当前会话记录并保存空状态，不是只清空显示。
+
+## 一次任务中记录什么
+
+旅行助手决定把室外行程改为室内时，日志应交代“依据什么作出什么决定”，而不是保存大段模型中间文本。例如，`decision` 记录改线决定，`issue` 记录原场馆已约满，`solution` 记录替代场馆和仍待确认的条件。
+
+保持一条记录描述一个事件。来源标识放进 `metadata`，使后续阅读者能够回到用户确认或工具结果；不要把 API Key、完整认证头等运行配置写入日志。自动模型请求和工具回执交给 TraceLogger，DevLog 用于人工可读的阶段说明。
+
+### 按类别和标签回看
 
 ```python
+from tempfile import TemporaryDirectory
 from hello_agents.tools.builtin import DevLogTool
 
-tool = DevLogTool(persistence_dir="memory/devlogs")
-
-# 记录决策
-response = tool.run({
-    "category": "decision",
-    "content": "选择 Redis 作为缓存方案",
-    "metadata": {
-        "reason": "高性能、支持持久化",
-        "alternatives": ["Memcached", "本地缓存"]
-    }
-})
-
-# 记录问题
-response = tool.run({
-    "category": "issue",
-    "content": "数据库连接池耗尽",
-    "metadata": {
-        "severity": "high",
-        "impact": "API 响应超时"
-    }
-})
-
-# 记录解决方案
-response = tool.run({
-    "category": "solution",
-    "content": "增加连接池大小到 50",
-    "metadata": {
-        "issue_id": "db-pool-exhausted",
-        "result": "问题解决"
-    }
-})
+with TemporaryDirectory() as directory:
+    log = DevLogTool(session_id="trip-01", project_root=directory)
+    for category, content in [
+        ("issue", "原定场馆已约满，需要替代方案。"),
+        ("decision", "先核对附近室内场馆的预约规则。"),
+    ]:
+        log.run({"action": "append", "category": category, "content": content,
+                 "metadata": {"tags": ["booking"], "source": "fixture:booking"}})
+    issues = log.run({"action": "read", "filter": {"category": "issue", "limit": 10}})
+    assert len(issues.data["entries"]) == 1
+    print(issues.data["entries"])
 ```
 
----
+查询只返回匹配的记录，原来的决策仍保留在文件中。`summary` 是已有日志的整理视图，不会替你核验“场馆已约满”是否属实。
 
-## 💡 核心概念
+### 接入 Agent
 
-### 7 种日志类别
+应用自行注册 DevLogTool 时，可明确指定会话 ID 和目录。需要框架自动注册时，使用 `Config(devlog_enabled=True)`；要替换默认实例，参照组件组合指南。确认实际注册的工具名称后，再在任务指导中说明什么阶段需要记录。
 
-| 类别          | 用途     | 示例                 |
-| ------------- | -------- | -------------------- |
-| `decision`    | 技术决策 | 选择数据库、架构设计 |
-| `progress`    | 进度更新 | 完成模块、里程碑     |
-| `issue`       | 问题记录 | Bug、性能问题、错误  |
-| `solution`    | 解决方案 | 问题修复、优化方案   |
-| `refactor`    | 重构记录 | 代码重构、架构调整   |
-| `test`        | 测试记录 | 测试结果、覆盖率     |
-| `performance` | 性能分析 | 性能瓶颈、优化效果   |
+## 组合与边界
 
-### 日志结构
+使用 `registry.register_tool(DevLogTool(...))` 提供给模型；默认辅助工具由 `Config.devlog_enabled` 控制。自定义实例可通过 [AgentComponents](component-composition-guide.md) 注入。
 
-```json
-{
-  "id": "devlog-20250220-103045",
-  "timestamp": "2026-02-21T10:30:45Z",
-  "category": "decision",
-  "content": "选择 Redis 作为缓存方案",
-  "metadata": {
-    "reason": "高性能、支持持久化",
-    "alternatives": ["Memcached", "本地缓存"],
-    "tags": ["cache", "redis"]
-  }
-}
-```
+记录保存在项目下的 `memory/devlogs/devlog-{session_id}.json`，可通过 `persistence_dir` 改变目录。会话 ID 应由宿主生成稳定、简单的标识，不把用户提供的路径直接作为 ID。
 
----
+DevLog 记录调用方提交的文本，不自动判断事实真伪，也不会把所有日志自动加入下一次模型输入。需要检索和跨任务偏好管理时，使用 [记忆组件](memory-guide.md)。同一会话文件不提供跨进程并发事务，应避免多个写者共用。
 
-## 📝 使用指南
+## 常见问题
 
-### 1. 记录不同类型的日志
+**DevLog 和长期记忆有什么不同？**
 
-**决策日志：**
-```python
-tool.run({
-    "category": "decision",
-    "content": "使用 PostgreSQL 作为主数据库",
-    "metadata": {
-        "reason": "支持 JSONB、事务完整性",
-        "alternatives": ["MySQL", "MongoDB"],
-        "tags": ["database", "architecture"]
-    }
-})
-```
+DevLog 按会话记录过程，适合复盘决定和问题；MemoryStore 管理带来源、可修订和可召回的事实。重要偏好需要后续参与判断时，应通过记忆或画像组件维护。
 
-**进度日志：**
-```python
-tool.run({
-    "category": "progress",
-    "content": "完成用户认证模块",
-    "metadata": {
-        "milestone": "v1.0",
-        "completion": "80%",
-        "tags": ["auth", "milestone"]
-    }
-})
-```
+**记录之后，下一轮模型会自动读到吗？**
 
-**问题日志：**
-```python
-tool.run({
-    "category": "issue",
-    "content": "内存泄漏导致服务崩溃",
-    "metadata": {
-        "severity": "critical",
-        "impact": "服务不可用",
-        "tags": ["memory", "bug"]
-    }
-})
-```
+写入工具的回执会进入当前循环，但全部历史日志不会自动注入。需要回顾时调用 `read`，或由宿主筛选相关记录后放入上下文。
 
-**解决方案日志：**
-```python
-tool.run({
-    "category": "solution",
-    "content": "修复内存泄漏：关闭未使用的连接",
-    "metadata": {
-        "issue_id": "memory-leak-001",
-        "result": "内存使用降低 60%",
-        "tags": ["memory", "fix"]
-    }
-})
-```
+**清空操作能撤销吗？**
 
-**重构日志：**
-```python
-tool.run({
-    "category": "refactor",
-    "content": "重构工具注册机制",
-    "metadata": {
-        "reason": "提高可扩展性",
-        "impact": "代码减少 30%",
-        "tags": ["refactor", "tools"]
-    }
-})
-```
-
-**测试日志：**
-```python
-tool.run({
-    "category": "test",
-    "content": "单元测试覆盖率达到 85%",
-    "metadata": {
-        "passed": 120,
-        "failed": 5,
-        "coverage": "85%",
-        "tags": ["test", "coverage"]
-    }
-})
-```
-
-**性能日志：**
-```python
-tool.run({
-    "category": "performance",
-    "content": "API 响应时间优化",
-    "metadata": {
-        "before": "500ms",
-        "after": "150ms",
-        "improvement": "70%",
-        "tags": ["performance", "api"]
-    }
-})
-```
-
-### 2. 查询日志
-
-```python
-# 查询所有日志
-response = tool.run({"action": "list"})
-
-# 按类别查询
-response = tool.run({
-    "action": "list",
-    "category": "issue"
-})
-
-# 按标签查询
-response = tool.run({
-    "action": "list",
-    "tags": ["memory", "bug"]
-})
-
-# 生成摘要
-response = tool.run({"action": "summary"})
-```
-
-### 3. 清空日志
-
-```python
-# 清空所有日志
-response = tool.run({"action": "clear"})
-```
-
----
-
-## 📊 实际案例
-
-### 案例 1：问题追踪
-
-**场景：** 记录和解决性能问题
-
-```python
-# 1. 记录问题
-tool.run({
-    "category": "issue",
-    "content": "数据库查询慢，响应时间 > 2s",
-    "metadata": {
-        "severity": "high",
-        "query": "SELECT * FROM users WHERE ...",
-        "tags": ["performance", "database"]
-    }
-})
-
-# 2. 记录分析
-tool.run({
-    "category": "performance",
-    "content": "缺少索引导致全表扫描",
-    "metadata": {
-        "table": "users",
-        "missing_index": "email",
-        "tags": ["performance", "database"]
-    }
-})
-
-# 3. 记录解决方案
-tool.run({
-    "category": "solution",
-    "content": "添加 email 字段索引",
-    "metadata": {
-        "before": "2.3s",
-        "after": "0.05s",
-        "improvement": "97.8%",
-        "tags": ["performance", "database"]
-    }
-})
-```
-
-### 案例 2：架构演进
-
-**场景：** 记录架构决策和重构
-
-```python
-# 1. 记录决策
-tool.run({
-    "category": "decision",
-    "content": "引入微服务架构",
-    "metadata": {
-        "reason": "提高可扩展性和独立部署能力",
-        "services": ["auth", "order", "payment"],
-        "tags": ["architecture", "microservices"]
-    }
-})
-
-# 2. 记录重构
-tool.run({
-    "category": "refactor",
-    "content": "拆分单体应用为 3 个微服务",
-    "metadata": {
-        "duration": "2 weeks",
-        "impact": "部署时间减少 80%",
-        "tags": ["architecture", "refactor"]
-    }
-})
-
-# 3. 记录进度
-tool.run({
-    "category": "progress",
-    "content": "微服务迁移完成 100%",
-    "metadata": {
-        "milestone": "v2.0",
-        "services_migrated": 3,
-        "tags": ["architecture", "milestone"]
-    }
-})
-```
-
-### 案例 3：测试驱动开发
-
-**场景：** 记录测试和质量改进
-
-```python
-# 1. 记录测试
-tool.run({
-    "category": "test",
-    "content": "添加集成测试",
-    "metadata": {
-        "tests_added": 25,
-        "coverage_increase": "15%",
-        "tags": ["test", "integration"]
-    }
-})
-
-# 2. 记录问题
-tool.run({
-    "category": "issue",
-    "content": "发现边界条件 Bug",
-    "metadata": {
-        "test": "test_user_registration",
-        "condition": "email 为空",
-        "tags": ["test", "bug"]
-    }
-})
-
-# 3. 记录修复
-tool.run({
-    "category": "solution",
-    "content": "添加 email 验证",
-    "metadata": {
-        "validation": "非空 + 格式检查",
-        "tests_passed": "100%",
-        "tags": ["test", "fix"]
-    }
-})
-```
-
----
-
-## 🎯 最佳实践
-
-### 1. 使用标签组织日志
-
-```python
-# ✅ 好：使用标签便于查询
-tool.run({
-    "category": "issue",
-    "content": "内存泄漏",
-    "metadata": {
-        "tags": ["memory", "bug", "critical"]
-    }
-})
-
-# 查询时可以按标签过滤
-tool.run({
-    "action": "list",
-    "tags": ["critical"]
-})
-```
-
-### 2. 记录关键元数据
-
-```python
-# ✅ 好：记录详细元数据
-tool.run({
-    "category": "performance",
-    "content": "API 优化",
-    "metadata": {
-        "endpoint": "/api/users",
-        "before": "500ms",
-        "after": "150ms",
-        "method": "添加缓存",
-        "tags": ["performance", "api"]
-    }
-})
-```
-
-### 3. 关联相关日志
-
-```python
-# 记录问题时生成 ID
-issue_response = tool.run({
-    "category": "issue",
-    "content": "数据库连接池耗尽",
-    "metadata": {"issue_id": "db-pool-001"}
-})
-
-# 解决方案引用问题 ID
-tool.run({
-    "category": "solution",
-    "content": "增加连接池大小",
-    "metadata": {
-        "issue_id": "db-pool-001",
-        "result": "问题解决"
-    }
-})
-```
-
----
-
-## 🔧 高级用法
-
-### 1. 自定义持久化目录
-
-```python
-tool = DevLogTool(persistence_dir="custom/logs")
-```
-
-### 2. 批量查询
-
-```python
-# 查询所有问题和解决方案
-response = tool.run({
-    "action": "list",
-    "category": ["issue", "solution"]
-})
-```
-
-### 3. 生成项目摘要
-
-```python
-# 生成完整摘要
-response = tool.run({"action": "summary"})
-
-# 摘要包含：
-# - 总日志数
-# - 各类别统计
-# - 关键决策
-# - 未解决问题
-```
-
----
-
-## 🔗 相关文档
-
-- [日志系统](./logging-system-guide.md) - 四种日志范式对比
-- [可观测性](./observability-guide.md) - TraceLogger 使用
-- [TodoWrite](./todowrite-usage-guide.md) - 任务进度管理
-
----
-
-## ❓ 常见问题
-
-**Q: DevLogTool 和 TraceLogger 的区别？**
-
-A:
-- **DevLogTool**: 记录开发决策、问题、解决方案（结构化）
-- **TraceLogger**: 记录执行轨迹、工具调用、LLM 请求（审计）
-
-**Q: 如何禁用 DevLogTool？**
-
-A: 设置 `devlog_enabled=False`：
-```python
-config = Config(devlog_enabled=False)
-```
-
-**Q: 日志文件在哪里？**
-
-A: 默认保存在 `memory/devlogs/` 目录：
-```
-memory/devlogs/
-├── devlog-20250220-103045.json
-├── devlog-20250220-143022.json
-└── devlog-20250220-183033.json
-```
-
-**Q: 如何导出日志？**
-
-A: 日志以 JSON 格式保存，可以直接读取：
-```python
-import json
-
-with open("memory/devlogs/devlog-xxx.json") as f:
-    logs = json.load(f)
-
-# 导出为 CSV
-import csv
-with open("logs.csv", "w") as f:
-    writer = csv.DictWriter(f, fieldnames=["timestamp", "category", "content"])
-    writer.writeheader()
-    for log in logs:
-        writer.writerow(log)
-```
-
----
-
-## 📈 使用统计
-
-### 日志类别分布（典型项目）
-
-| 类别          | 占比 | 示例数量 |
-| ------------- | ---- | -------- |
-| `progress`    | 30%  | 45       |
-| `decision`    | 20%  | 30       |
-| `issue`       | 15%  | 22       |
-| `solution`    | 15%  | 22       |
-| `refactor`    | 10%  | 15       |
-| `test`        | 5%   | 8        |
-| `performance` | 5%   | 8        |
-
-### 价值体现
-
-| 场景     | 价值                       |
-| -------- | -------------------------- |
-| 问题复盘 | 快速定位问题和解决方案     |
-| 知识传承 | 记录技术决策和架构演进     |
-| 团队协作 | 共享开发日志，避免重复工作 |
-| 项目总结 | 自动生成项目报告和里程碑   |
-
----
-
-**最后更新**: 2026-02-21
-
-
+`clear` 会保存空记录。需要保留审阅依据时先另存文件，不能把清空当作暂时隐藏。

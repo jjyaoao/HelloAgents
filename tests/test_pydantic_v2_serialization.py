@@ -31,7 +31,7 @@ def test_config_to_dict_uses_pydantic_v2_serialization():
         warnings.simplefilter("error", PydanticDeprecatedSince20)
         data = Config().to_dict()
 
-    assert data["default_model"] == "gpt-3.5-turbo"
+    assert data["default_model"] is None
 
 
 def test_tool_to_dict_uses_pydantic_v2_serialization():

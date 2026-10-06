@@ -1,529 +1,111 @@
-# HelloAgents 文件操作工具使用指南
+# 文件工具：读取、写入与顺序编辑
 
-> 提供标准的文件读写编辑能力，内置乐观锁机制，确保多进程/多 Agent 协作时的数据安全
-
----
+文件工具提供 `Read`、`Write`、`Edit`、`MultiEdit`。它们返回 `ToolResponse`，可单独使用，也可注册到 Agent。编辑工具通过唯一匹配和写入前检查减少误改；宿主仍需负责访问范围和授权。
 
 ## 📚 目录
 
-- [快速开始](#快速开始)
-- [工具介绍](#工具介绍)
-- [乐观锁机制](#乐观锁机制)
-- [使用示例](#使用示例)
-- [API 参考](#api-参考)
-- [最佳实践](#最佳实践)
+- [最小示例](#最小示例)
+- [参数与结果](#参数与结果)
+- [用法选择：先读，再改，再回读](#用法选择先读再改再回读)
+- [边界](#边界)
+- [常见问题](#常见问题)
 
----
+## 最小示例
 
-## 快速开始
-
-### 安装
-
-文件工具已内置在 HelloAgents 框架中，无需额外安装。
-
-### 基本使用
+下面只操作独立临时目录，不调用模型。
 
 ```python
-from hello_agents import ToolRegistry, ReActAgent, HelloAgentsLLM
-from hello_agents.tools.builtin import ReadTool, WriteTool, EditTool
-
-# 1. 创建工具注册表
-registry = ToolRegistry()
-
-# 2. 注册文件工具
-registry.register_tool(ReadTool(project_root="./"))
-registry.register_tool(WriteTool(project_root="./"))
-registry.register_tool(EditTool(project_root="./"))
-
-# 3. 创建 Agent
-llm = HelloAgentsLLM()
-agent = ReActAgent("assistant", llm, tool_registry=registry)
-
-# 4. Agent 自动使用文件工具
-result = agent.run("读取 config.py，然后修改 API_KEY 为 'new_key_123'")
-```
-
----
-
-## 工具介绍
-
-HelloAgents 提供 4 个专业的文件操作工具：
-
-### 1. ReadTool - 文件读取
-
-**功能**：
-- 读取文件内容
-- 支持行号范围（offset/limit）
-- 自动获取文件元数据（mtime, size）
-- 缓存元数据到 ToolRegistry（用于乐观锁）
-
-**参数**：
-- `path` (必需): 文件路径（相对于 project_root）
-- `offset` (可选): 起始行号，默认 0
-- `limit` (可选): 最大行数，默认 2000
-
-**返回**：
-```json
-{
-  "status": "success",
-  "data": {
-    "content": "文件内容...",
-    "lines": 100,
-    "total_lines": 150,
-    "file_mtime_ms": 1738245123456,
-    "file_size_bytes": 4217
-  },
-  "text": "读取 100 行（共 150 行，4217 字节）"
-}
-```
-
-### 2. WriteTool - 文件写入
-
-**功能**：
-- 创建或覆盖文件
-- 乐观锁冲突检测（如果文件已存在）
-- 原子写入（临时文件 + rename）
-- 自动备份原文件
-
-**参数**：
-- `path` (必需): 文件路径
-- `content` (必需): 文件内容
-- `file_mtime_ms` (可选): 缓存的 mtime（用于冲突检测）
-
-**返回**：
-```json
-{
-  "status": "success",
-  "data": {
-    "written": true,
-    "size_bytes": 1024,
-    "backup_path": ".backups/config.py.20250119_143022.bak"
-  },
-  "text": "成功写入 config.py (1024 字节)"
-}
-```
-
-### 3. EditTool - 精确替换
-
-**功能**：
-- 精确替换文件内容（old_string 必须唯一匹配）
-- 乐观锁冲突检测
-- 自动备份原文件
-
-**参数**：
-- `path` (必需): 文件路径
-- `old_string` (必需): 要替换的内容
-- `new_string` (必需): 替换后的内容
-- `file_mtime_ms` (可选): 缓存的 mtime
-
-**返回**：
-```json
-{
-  "status": "success",
-  "data": {
-    "modified": true,
-    "changed_bytes": 10,
-    "backup_path": ".backups/config.py.20250119_143022.bak"
-  },
-  "text": "成功编辑 config.py (变化 +10 字节)"
-}
-```
-
-### 4. MultiEditTool - 批量替换
-
-**功能**：
-- 批量执行多个替换操作
-- 原子性保证（要么全部成功，要么全部失败）
-- 乐观锁冲突检测（所有替换前检查一次）
-
-**参数**：
-- `path` (必需): 文件路径
-- `edits` (必需): 替换列表 `[{"old_string": "...", "new_string": "..."}]`
-- `file_mtime_ms` (可选): 缓存的 mtime
-
-**返回**：
-```json
-{
-  "status": "success",
-  "data": {
-    "modified": true,
-    "num_edits": 3,
-    "changed_bytes": 25,
-    "backup_path": ".backups/config.py.20250119_143022.bak"
-  },
-  "text": "成功执行 3 个替换操作 (变化 +25 字节)"
-}
-```
-
----
-
-## 乐观锁机制
-
-### 什么是乐观锁？
-
-乐观锁是一种并发控制机制，通过检测文件是否在读取后被修改，来避免意外覆盖。
-
-### 工作原理
-
-```
-┌─────────────────────────────────────────────────┐
-│           乐观锁机制流程                      │
-└─────────────────────────────────────────────────┘
-
-1. Read("config.py")
-   ├─ 读取文件内容
-   ├─ 获取元数据（mtime=123456, size=4217）
-   └─ 缓存到 ToolRegistry
-
-2. [外部修改 config.py]
-   └─ mtime 变为 123789
-
-3. Edit("config.py", file_mtime_ms=123456)
-   ├─ 检查当前 mtime (123789) vs 缓存 mtime (123456)
-   ├─ 不一致 → 返回 CONFLICT 错误
-   └─ Agent 看到冲突，重新 Read
-```
-
-### 为什么需要乐观锁？
-
-**场景 1：外部修改**
-```python
-# 时间线
-00:00 - Agent Read config.py
-00:01 - 用户手动修改 config.py
-00:02 - Agent Edit config.py
-        → 没有乐观锁：静默覆盖用户修改 ❌
-        → 有乐观锁：检测到冲突，拒绝修改 ✅
-```
-
-**场景 2：多 Agent 协作**
-```python
-# Agent A 和 Agent B 同时操作同一文件
-Agent A: Read → 准备修改
-Agent B: Read → Edit 成功
-Agent A: Edit → 检测到冲突 ✅
-```
-
----
-
-## 使用示例
-
-### 示例 1：基本文件操作
-
-```python
-from hello_agents.tools.builtin import ReadTool, WriteTool, EditTool
-from hello_agents.tools.registry import ToolRegistry
-
-# 创建工具
-registry = ToolRegistry()
-read_tool = ReadTool(project_root="./", registry=registry)
-write_tool = WriteTool(project_root="./", registry=registry)
-edit_tool = EditTool(project_root="./", registry=registry)
-
-# 1. 写入文件
-response = write_tool.run({
-    "path": "config.py",
-    "content": 'API_KEY = "test_key"\nDEBUG = False\n'
-})
-print(response.text)  # 成功写入 config.py (XX 字节)
-
-# 2. 读取文件
-response = read_tool.run({"path": "config.py"})
-print(response.data["content"])
-
-# 3. 编辑文件
-response = edit_tool.run({
-    "path": "config.py",
-    "old_string": "DEBUG = False",
-    "new_string": "DEBUG = True"
-})
-print(response.text)  # 成功编辑 config.py
-```
-
-### 示例 2：乐观锁冲突检测
-
-```python
-import time
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from hello_agents import ToolRegistry
+from hello_agents.tools.builtin import ReadTool, WriteTool, EditTool, MultiEditTool
+from hello_agents.tools.response import ToolStatus
 
-# 创建测试文件
-test_file = Path("data.txt")
-test_file.write_text("Original content")
-
-# 1. Agent 读取文件（缓存元数据）
-response = read_tool.run({"path": "data.txt"})
-print(f"缓存的 mtime: {response.data['file_mtime_ms']}")
-
-# 2. 模拟外部修改
-time.sleep(0.1)
-test_file.write_text("Modified by external process")
-
-# 3. Agent 尝试编辑（使用缓存的 mtime）
-cached_metadata = registry.get_read_metadata("data.txt")
-response = edit_tool.run({
-    "path": "data.txt",
-    "old_string": "Original content",
-    "new_string": "My changes",
-    "file_mtime_ms": cached_metadata["file_mtime_ms"]
-})
-
-# 检测到冲突！
-if response.status.value == "error":
-    print(f"✅ 冲突检测成功: {response.error_info['message']}")
-    # 输出: 文件自上次读取后被修改。当前 mtime=XXX, 缓存 mtime=YYY
+with TemporaryDirectory() as directory:
+    registry = ToolRegistry()
+    for cls in (ReadTool, WriteTool, EditTool, MultiEditTool):
+        registry.register_tool(cls(project_root=directory, registry=registry))
+    assert registry.execute_tool("Write", {"path": "plan.txt", "content": "湖边散步"}).status == ToolStatus.SUCCESS
+    assert registry.execute_tool("Read", {"path": "plan.txt"}).status == ToolStatus.SUCCESS
+    result = registry.execute_tool("MultiEdit", {
+        "path": "plan.txt",
+        "edits": [
+            {"old_string": "湖边", "new_string": "博物馆附近"},
+            {"old_string": "博物馆附近散步", "new_string": "博物馆参观"},
+        ],
+    })
+    assert result.status == ToolStatus.SUCCESS
+    assert (Path(directory) / "plan.txt").read_text(encoding="utf-8") == "博物馆参观"
+    print(result.to_dict())
 ```
 
-### 示例 3：批量编辑
+第二项编辑使用第一项编辑后的内容。所有编辑先在内存副本上按顺序校验，全部通过后再写文件；任一项没有唯一匹配就返回错误，不写入部分结果。
+
+## 参数与结果
+
+`Read` 接收 `path`、可选 `offset` 和 `limit`，按行读取；目录路径返回目录内容。`Write` 接收 `path`、`content`，会创建缺失的父目录。`Edit` 接收 `path`、`old_string`、`new_string`；原字符串必须非空且恰好出现一次。`MultiEdit` 接收相同结构的 `edits` 数组。
+
+读工具关联注册表后会缓存文件元数据。写入、编辑可使用缓存或显式 `file_mtime_ms` 检查读取后是否被修改。冲突返回 `CONFLICT`，应重新读取并重新决定修改，不能盲目重试旧替换。
+
+覆盖已有内容前会保存备份，返回数据包含备份路径。写入使用独占创建的同目录临时文件，完成后替换目标文件；失败清理只针对本次临时文件。
+
+## 用法选择：先读，再改，再回读
+
+`Write` 适合创建新文件或在明确知道完整内容时整体替换；`Edit` 适合替换一处准确片段；`MultiEdit` 适合同一文件中有先后关系的多处替换。不要为了替换一句话，先让模型重写整个文件。
+
+对已有文件，先通过同一注册表的 `Read` 获取内容和元数据，再选择修改方式。执行后回读，检查最终内容与工具回执是否一致。下面演示唯一匹配检查：
 
 ```python
-from hello_agents.tools.builtin import MultiEditTool
-
-multiedit_tool = MultiEditTool(project_root="./")
-
-response = multiedit_tool.run({
-    "path": "settings.py",
-    "edits": [
-        {"old_string": 'API_KEY = "old"', "new_string": 'API_KEY = "new"'},
-        {"old_string": "DEBUG = False", "new_string": "DEBUG = True"},
-        {"old_string": "PORT = 8000", "new_string": "PORT = 9000"}
-    ]
-})
-
-print(response.text)  # 成功执行 3 个替换操作
-```
-
-### 示例 4：在 Agent 中使用
-
-```python
-from hello_agents import ReActAgent, HelloAgentsLLM, ToolRegistry
-from hello_agents.tools.builtin import ReadTool, WriteTool, EditTool
-
-# 创建 Agent
-llm = HelloAgentsLLM()
-registry = ToolRegistry()
-
-registry.register_tool(ReadTool(project_root="./", registry=registry))
-registry.register_tool(WriteTool(project_root="./", registry=registry))
-registry.register_tool(EditTool(project_root="./", registry=registry))
-
-agent = ReActAgent("assistant", llm, tool_registry=registry)
-
-# Agent 自动使用乐观锁
-result = agent.run("""
-请执行以下任务：
-1. 读取 config.py 文件
-2. 将 API_KEY 修改为 'new_key_456'
-3. 将 DEBUG 修改为 True
-""")
-
-print(result)
-```
-
----
-
-## API 参考
-
-### ReadTool
-
-```python
-class ReadTool(Tool):
-    def __init__(
-        self,
-        project_root: str = ".",
-        working_dir: Optional[str] = None,
-        registry: Optional[ToolRegistry] = None
-    )
-```
-
-**参数**：
-- `project_root`: 项目根目录，默认当前目录
-- `working_dir`: 工作目录，默认等于 project_root
-- `registry`: ToolRegistry 实例（用于元数据缓存）
-
-### WriteTool
-
-```python
-class WriteTool(Tool):
-    def __init__(
-        self,
-        project_root: str = ".",
-        working_dir: Optional[str] = None,
-        registry: Optional[ToolRegistry] = None
-    )
-```
-
-### EditTool
-
-```python
-class EditTool(Tool):
-    def __init__(
-        self,
-        project_root: str = ".",
-        working_dir: Optional[str] = None,
-        registry: Optional[ToolRegistry] = None
-    )
-```
-
-### MultiEditTool
-
-```python
-class MultiEditTool(Tool):
-    def __init__(
-        self,
-        project_root: str = ".",
-        working_dir: Optional[str] = None,
-        registry: Optional[ToolRegistry] = None
-    )
-```
-
----
-
-## 最佳实践
-
-### 1. 始终传递 registry
-
-```python
-# ✅ 推荐：传递 registry，启用乐观锁
-registry = ToolRegistry()
-read_tool = ReadTool(project_root="./", registry=registry)
-edit_tool = EditTool(project_root="./", registry=registry)
-
-# ❌ 不推荐：不传递 registry，无法使用乐观锁
-read_tool = ReadTool(project_root="./")
-edit_tool = EditTool(project_root="./")
-```
-
-### 2. Read 后再 Edit
-
-```python
-# ✅ 推荐：先 Read，缓存元数据
-read_tool.run({"path": "config.py"})
-cached = registry.get_read_metadata("config.py")
-edit_tool.run({
-    "path": "config.py",
-    "old_string": "old",
-    "new_string": "new",
-    "file_mtime_ms": cached["file_mtime_ms"]
-})
-
-# ❌ 不推荐：直接 Edit，无冲突检测
-edit_tool.run({
-    "path": "config.py",
-    "old_string": "old",
-    "new_string": "new"
-})
-```
-
-### 3. 处理冲突错误
-
-```python
-response = edit_tool.run({...})
-
-if response.status.value == "error":
-    if response.error_info["code"] == "CONFLICT":
-        # 冲突：重新读取文件
-        read_tool.run({"path": "config.py"})
-        # 然后重试编辑
-    else:
-        # 其他错误
-        print(f"错误: {response.error_info['message']}")
-```
-
-### 4. 使用 MultiEdit 提高效率
-
-```python
-# ✅ 推荐：批量编辑（原子性）
-multiedit_tool.run({
-    "path": "config.py",
-    "edits": [
-        {"old_string": "A", "new_string": "A'"},
-        {"old_string": "B", "new_string": "B'"},
-        {"old_string": "C", "new_string": "C'"}
-    ]
-})
-
-# ❌ 不推荐：多次单独编辑（效率低，无原子性）
-edit_tool.run({"path": "config.py", "old_string": "A", "new_string": "A'"})
-edit_tool.run({"path": "config.py", "old_string": "B", "new_string": "B'"})
-edit_tool.run({"path": "config.py", "old_string": "C", "new_string": "C'"})
-```
-
-### 5. 备份文件管理
-
-```python
-# 备份文件自动保存在 .backups/ 目录
-# 建议定期清理旧备份
-
-import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from hello_agents import ToolRegistry
+from hello_agents.tools.builtin import ReadTool, EditTool
+from hello_agents.tools.response import ToolStatus
 
-backup_dir = Path(".backups")
-if backup_dir.exists():
-    # 保留最近 10 个备份
-    backups = sorted(backup_dir.glob("*.bak"), key=lambda p: p.stat().st_mtime)
-    for old_backup in backups[:-10]:
-        old_backup.unlink()
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "plan.txt"
+    path.write_text("上午参观博物馆\n下午参观博物馆\n", encoding="utf-8")
+    registry = ToolRegistry()
+    registry.register_tool(ReadTool(project_root=directory, registry=registry))
+    registry.register_tool(EditTool(project_root=directory, registry=registry))
+    registry.execute_tool("Read", {"path": "plan.txt"})
+    rejected = registry.execute_tool("Edit", {
+        "path": "plan.txt", "old_string": "参观博物馆", "new_string": "湖边散步",
+    })
+    assert rejected.status == ToolStatus.ERROR
+    assert path.read_text(encoding="utf-8").count("参观博物馆") == 2
+    changed = registry.execute_tool("Edit", {
+        "path": "plan.txt", "old_string": "下午参观博物馆", "new_string": "下午湖边散步",
+    })
+    assert changed.status == ToolStatus.SUCCESS
+    assert "下午湖边散步" in path.read_text(encoding="utf-8")
+    print(registry.execute_tool("Read", {"path": "plan.txt"}).text)
 ```
 
----
+第一次替换无法区分两处相同文本，因此没有写入；第二次增加“下午”作为定位条件，才修改目标位置。匹配失败时应补足上下文，而不是把错误吞掉后继续执行下一项修改。
+
+### 处理并发修改
+
+收到 `CONFLICT` 后，重新读取文件，比较另一位写者的改动，再生成新替换。旧请求基于旧内容，即使工具名和参数格式都正确，也可能已经不适用。对于需要多个写者协作的系统，还应在宿主增加锁或事务机制。
+
+## 边界
+
+`project_root` 与 `working_dir` 决定路径解析位置，不是访问沙箱；绝对路径及目录外路径需要宿主另行限制。读取缓存按调用路径记录，应用应统一路径表达。
+
+修改时间采用毫秒精度，不能识别同一毫秒内且时间戳未变化的改写；检查与最终写入之间也仍有时间窗口，不能宣称跨进程比较交换或多写者事务。批量编辑的完整性只覆盖一次调用，不覆盖多个文件。备份、工具回执和会话恢复均不等于自动撤销外部操作。
+
+相关指南：[工具返回协议](tool-response-protocol.md)、[自定义工具](custom_tools_guide.md)。
 
 ## 常见问题
 
-### Q1: 为什么 Edit 返回 "old_string 必须唯一匹配" 错误？
+**为什么 Edit 找到了内容，仍然拒绝修改？**
 
-**原因**：EditTool 要求 `old_string` 在文件中只出现一次，以确保替换的精确性。
+原字符串必须只出现一次。读取相关行，扩大替换片段以便准确定位；同时检查读取后是否发生文件修改。
 
-**解决方案**：
-```python
-# 方案 1：使用更具体的 old_string
-edit_tool.run({
-    "path": "config.py",
-    "old_string": 'API_KEY = "old_key"',  # 包含更多上下文
-    "new_string": 'API_KEY = "new_key"'
-})
+**一次 MultiEdit 中，第二项能使用第一项生成的内容吗？**
 
-# 方案 2：使用 MultiEdit 指定多个替换
-multiedit_tool.run({
-    "path": "config.py",
-    "edits": [
-        {"old_string": "第一处的内容", "new_string": "新内容1"},
-        {"old_string": "第二处的内容", "new_string": "新内容2"}
-    ]
-})
-```
+可以，按数组顺序在内存中执行。任一项校验失败，本次批量修改都不落盘。它只处理一个文件，多文件操作需要宿主组织。
 
-### Q2: 如何禁用乐观锁？
+**工具保存备份后会自动回滚吗？**
 
-**方法**：不传递 `file_mtime_ms` 参数即可
-
-```python
-# 不使用乐观锁
-edit_tool.run({
-    "path": "config.py",
-    "old_string": "old",
-    "new_string": "new"
-    # 不传递 file_mtime_ms
-})
-```
-
-### Q3: 跨平台兼容性如何？
-
-**答**：完全兼容 Windows、Linux、macOS
-
-- 使用 `pathlib.Path` 统一路径处理
-- 使用毫秒级时间戳确保精度
-- 自动处理不同文件系统的差异
-
----
-
-## 相关文档
-
-- [工具响应协议](../refine/01-tool-response-protocol.md)
-- [乐观锁机制设计](../refine/08-optimistic-locking.md)
-- [ToolRegistry API](../api/tools/registry.md)
-
----
-
-**最后更新**：2025-01-19  
-**维护者**：HelloAgents 开发团队
-
+不会。备份提供恢复材料；选择是否恢复、恢复哪个版本仍由宿主决定。
