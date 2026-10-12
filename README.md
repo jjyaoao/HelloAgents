@@ -100,7 +100,22 @@ print(f"检测到的 provider: {llm.provider}")
 | ------------ | -------------------------------------- | ------------------------------------ |
 | **云端 API** | OpenAI、DeepSeek、Qwen、Kimi、智谱 GLM | `LLM_BASE_URL=https://api.deepseek.com`      |
 | **本地推理** | vLLM、Ollama、SGLang                   | `LLM_BASE_URL=http://localhost:8000/v1` |
+| **聚合网关** | Atlas Cloud                            | `LLM_BASE_URL=https://api.atlascloud.ai/v1` |
 | **其他兼容** | 任何 OpenAI 格式接口                   | `LLM_BASE_URL=your-endpoint`         |
+
+Atlas Cloud 使用上面的通用变量即可，无需额外配置。模型 ID 带厂商前缀（如 `deepseek-ai/deepseek-v4-flash`），请先查询可用模型再填写：
+
+```bash
+curl -s https://api.atlascloud.ai/v1/models | python -c "import sys,json; print('\n'.join(m['id'] for m in json.load(sys.stdin)['data']))"
+```
+
+```bash
+LLM_MODEL_ID=<上一步列表中的模型 ID>
+LLM_API_KEY=<Atlas Cloud API Key，在 https://console.atlascloud.ai/api-keys 创建>
+LLM_BASE_URL=https://api.atlascloud.ai/v1
+```
+
+> 说明：`/v1/models` 无需密钥即可访问，因此模型列表能返回并不代表密钥有效；对话、流式输出与工具调用均走标准的 `/v1/chat/completions`。
 
 #### 2. Anthropic 适配器
 
