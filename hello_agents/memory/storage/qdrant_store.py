@@ -262,6 +262,21 @@ class QdrantVectorStore:
             if not vectors:
                 logger.warning("⚠️ 向量列表为空")
                 return False
+
+            if len(vectors) != len(metadata):
+                logger.error(
+                    "❌ 向量与元数据数量不匹配: vectors=%s metadata=%s",
+                    len(vectors),
+                    len(metadata),
+                )
+                return False
+            if ids is not None and len(ids) != len(vectors):
+                logger.error(
+                    "❌ 向量与ID数量不匹配: vectors=%s ids=%s",
+                    len(vectors),
+                    len(ids),
+                )
+                return False
                 
             # 生成ID（如果未提供）
             if ids is None:
