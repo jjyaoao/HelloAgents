@@ -193,6 +193,13 @@ class SimpleAgent(Agent):
             if self.tool_registry.get_tool(name)
             else arguments.get("input", "")
         )
+        from ..tools.builtin.parallel_search import ParallelWebTool
+
+        if isinstance(self.tool_registry.get_tool(name), ParallelWebTool):
+            parameters = dict(
+                parameters,
+                _parallel_session_id=self._session_metadata["parallel_search_session_id"],
+            )
         response = await self.tool_registry.aexecute_tool(name, parameters)
         text = response.to_model_text()
         truncated = self.truncator.truncate(name, text)

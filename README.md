@@ -120,6 +120,9 @@ print(f"检测到的 provider: {llm.provider}")
 
 检索、记忆与上下文可以独立使用，也可以通过 `AgentComponents` 注入运行组件。示例：[旅行助手](examples/applications/travel_assistant.py) · [工具与会话恢复](examples/agents/runtime_features.py)。两者默认均可离线运行，具体用法见下方文档。
 
+`ReActAgent` 未传入工具注册表时，默认提供无需搜索 API key 的 Parallel 网页搜索与页面读取。
+安装 MCP 可选依赖、关闭搜索或保留自定义工具的方法见 [ReActAgent 默认网页搜索](docs/mcp-guide.md#reactagent-默认网页搜索)。
+
 ## 🏗️ 项目结构
 
 ```

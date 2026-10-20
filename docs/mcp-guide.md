@@ -5,11 +5,53 @@
 ## 📚 目录
 
 - [快速开始](#快速开始)
+- [ReActAgent 默认网页搜索](#reactagent-默认网页搜索)
 - [先独立调用，再接入模型](#先独立调用再接入模型)
 - [HTTP 与认证](#http-与认证)
 - [生命周期与错误](#生命周期与错误)
 - [完整示例与验证](#完整示例与验证)
 - [常见问题](#常见问题)
+
+## ReActAgent 默认网页搜索
+
+未传入 `tool_registry` 时，`ReActAgent` 的自动注册表现在包含 `WebSearch` 和 `WebFetch`。
+它们通过 [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
+提供免费的网页搜索与页面摘录；搜索使用 Fast 模式，无需 Parallel 账号或 API key。
+先安装现有 MCP 可选依赖并配置模型的 `LLM_*` 字段：
+
+```bash
+python -m pip install -r requirements/mcp.txt
+```
+
+```python
+import asyncio
+from dotenv import load_dotenv
+from hello_agents import HelloAgentsLLM, ReActAgent
+
+async def main():
+    load_dotenv()
+    async with HelloAgentsLLM() as llm:
+        agent = ReActAgent("研究助手", llm)
+        print(await agent.arun("搜索 Python 3.13 的官方发布说明，给出来源链接"))
+
+asyncio.run(main())
+```
+
+`WebSearch` 接受 `objective` 和 `search_queries`，返回来源 URL 与相关摘录。
+仅在搜索摘录不足时使用 `WebFetch(urls=[...], objective="...")` 读取页面，
+一次最多 20 个 HTTP/HTTPS URL。初始化 Agent 不访问网络；模型实际调用工具时，
+查询或 URL 才会发送至 `https://search.parallel.ai/mcp`。未安装 MCP 依赖时，
+调用返回安装提示，不会切换到其他搜索服务。免费服务有使用额度，远端错误会作为工具错误回执返回。
+
+使用 `Config(web_search_enabled=False)` 可关闭自动搜索注册。
+显式传入 `tool_registry`（包括空注册表）时，框架完全保留宿主提供的工具，
+不会添加 Parallel 或替换已配置的搜索服务；`SimpleAgent` 等其他 Agent 的默认工具行为保持原样。
+注册表权限、工具过滤、超时、取消与熔断仍按原有机制执行。
+
+同一个 Agent 的搜索、读取与后续轮次共用随机会话 UUID；`clear_history()` 开始新的搜索会话。
+保存、恢复 Agent 会话时保留该 UUID，旧快照缺失该字段时生成新值。
+共享工具注册表的不同 Agent 仍使用各自的会话标识。标识由运行程序提供，不让模型生成。
+每次工具调用独立管理 MCP 连接；不会在失败后自动重试或静默回退。
 
 ## 快速开始
 

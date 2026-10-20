@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime
+from uuid import uuid4
 
 _MISSING = object()
 _STATE = (
@@ -31,6 +32,9 @@ def subagent_scope(agent, tool_filter=None, max_steps=None):
         names = tool_filter.filter(registry.list_tools()) if tool_filter is not None else None
         registry = registry.fork(names)
     metadata = deepcopy(agent._session_metadata)
+    # This scope is an independent research run; the parent identity is restored
+    # together with its metadata when the child finishes or fails.
+    metadata["parallel_search_session_id"] = str(uuid4())
     try:
         agent.tool_registry = registry
         agent.session_store = None

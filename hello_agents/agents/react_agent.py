@@ -27,14 +27,20 @@ class ReActAgent(SimpleAgent):
         max_steps: int = 5,
         components=None,
     ):
+        config = config or Config()
+        if tool_registry is None:
+            tool_registry = ToolRegistry()
+            if config.web_search_enabled:
+                from ..tools.builtin.parallel_search import ParallelWebTool
+
+                tool_registry.register_tool(ParallelWebTool())
+                tool_registry.register_tool(ParallelWebTool(fetch=True))
         super().__init__(
             name,
             llm,
             system_prompt or DEFAULT_REACT_SYSTEM_PROMPT,
             config,
-            tool_registry=(
-                tool_registry if tool_registry is not None else ToolRegistry()
-            ),
+            tool_registry=tool_registry,
             max_tool_iterations=max_steps,
             components=components,
         )

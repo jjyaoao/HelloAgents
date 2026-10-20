@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING, AsyncGenerator
 import asyncio
+from uuid import UUID, uuid4
 from .message import Message
 from .llm import HelloAgentsLLM
 from .config import Config
@@ -84,6 +85,7 @@ class Agent(ABC):
 
         # 会话元数据（用于保存）
         self._session_metadata = {
+            "parallel_search_session_id": str(uuid4()),
             "created_at": datetime.now().isoformat(),
             "total_tokens": 0,
             "total_steps": 0,
@@ -282,6 +284,7 @@ class Agent(ABC):
 
     def clear_history(self):
         """清空历史记录"""
+        self._session_metadata["parallel_search_session_id"] = str(uuid4())
         self.history_manager.clear()
         # 重置 Token 计数
         self._history_token_count = 0
@@ -670,6 +673,17 @@ class Agent(ABC):
         restored_cache = session_data.get("read_cache", {})
         if not isinstance(restored_metadata, dict) or not isinstance(restored_cache, dict):
             raise ValueError("会话 metadata 和 read_cache 必须是对象")
+        # Older snapshots have no search identity. Accept only opaque UUIDs,
+        # never user text, as provider conversation identifiers.
+        try:
+            search_session_id = str(
+                UUID(restored_metadata["parallel_search_session_id"])
+            )
+        except (KeyError, ValueError, TypeError, AttributeError):
+            search_session_id = str(uuid4())
+        restored_metadata = dict(
+            restored_metadata, parallel_search_session_id=search_session_id
+        )
         restored_tokens = self.token_counter.count_messages(restored_history)
 
         # 环境一致性检查

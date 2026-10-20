@@ -19,6 +19,9 @@ class Config(BaseModel):
     debug: bool = False
     log_level: str = "INFO"
 
+    # ReActAgent 自动创建注册表时提供免费搜索；显式注册表保持宿主选择。
+    web_search_enabled: bool = True
+
     # 上下文工程配置
     context_window: int = Field(default=128000, gt=0)
     compression_threshold: float = Field(default=0.8, gt=0, le=1)
