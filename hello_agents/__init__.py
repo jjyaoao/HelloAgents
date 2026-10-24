@@ -24,6 +24,9 @@ from .agents.react_agent import ReActAgent
 from .agents.reflection_agent import ReflectionAgent
 from .agents.plan_solve_agent import PlanSolveAgent
 
+# 向后兼容别名：v0.2.x（含 Datawhale hello-agents 教程正文）中该类名为 PlanAndSolveAgent
+PlanAndSolveAgent = PlanSolveAgent
+
 # 工具系统
 from .tools.registry import ToolRegistry, global_registry
 from .tools.builtin.calculator import CalculatorTool, calculate
@@ -50,6 +53,7 @@ __all__ = [
     "ReActAgent",
     "ReflectionAgent",
     "PlanSolveAgent",
+    "PlanAndSolveAgent",  # 向后兼容别名
 
     # 工具系统
     "ToolRegistry",
