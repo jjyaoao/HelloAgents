@@ -554,6 +554,7 @@ class AnthropicAdapter(BaseLLMAdapter):
 
         start_time = time.time()
         system_content, converted_messages = self._convert_messages(messages)
+        kwargs.pop("temperature", None)  # Anthropic SDK 1.11 no longer accepts it.
 
         try:
             # 构建请求参数
@@ -603,6 +604,7 @@ class AnthropicAdapter(BaseLLMAdapter):
 
         start_time = time.time()
         system_content, converted_messages = self._convert_messages(messages)
+        kwargs.pop("temperature", None)
 
         try:
             request_params = {
@@ -647,6 +649,7 @@ class AnthropicAdapter(BaseLLMAdapter):
         system_content, converted_messages = self._convert_messages(messages)
         converted_tools = self._convert_tools(tools)
         tool_choice = self._convert_tool_choice(kwargs.pop("tool_choice", None))
+        kwargs.pop("temperature", None)
 
         start_time = time.time()
         try:

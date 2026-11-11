@@ -171,6 +171,32 @@ def test_anthropic_invoke_with_tools_converts_schema_and_response():
     assert response.usage["total_tokens"] == 12
 
 
+def test_anthropic_omits_temperature_for_all_request_paths():
+    """The pinned Anthropic SDK rejects temperature on create and stream (#124)."""
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="ok")],
+        usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+    )
+    stream = mock_client.messages.stream.return_value.__enter__.return_value
+    stream.text_stream = iter(["ok"])
+    stream.get_final_message.return_value = SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+    )
+    adapter = AnthropicAdapter("test-key", "https://api.anthropic.com", 60, "claude-test")
+    adapter._client = mock_client
+    messages = [{"role": "user", "content": "hi"}]
+
+    adapter.invoke(messages, temperature=0.7)
+    assert "temperature" not in mock_client.messages.create.call_args.kwargs
+
+    assert list(adapter.stream_invoke(messages, temperature=None)) == ["ok"]
+    assert "temperature" not in mock_client.messages.stream.call_args.kwargs
+
+    adapter.invoke_with_tools(messages, _tool_schema(), temperature=1)
+    assert "temperature" not in mock_client.messages.create.call_args.kwargs
+
+
 def test_anthropic_converts_openai_tool_history_messages():
     """多轮工具调用历史应转换为 Anthropic tool_use/tool_result blocks"""
     adapter = AnthropicAdapter("test-key", "https://api.anthropic.com", 60, "claude-test")
