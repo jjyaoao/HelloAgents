@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 import uuid
 import logging
+from copy import deepcopy
 
 from .base import MemoryItem, MemoryConfig
 from .types.working import WorkingMemory
@@ -242,21 +243,43 @@ class MemoryManager:
         target_memory = self.memory_types[to_type]
 
         # 获取需要整合的记忆
-        all_memories = source_memory.get_all()
+        all_memories = deepcopy(source_memory.get_all())
         candidates = [
             m for m in all_memories
             if m.importance >= importance_threshold
         ]
 
         consolidated_count = 0
+        failed_memories = []
+        
         for memory in candidates:
-            # 移动到目标记忆类型
-            if source_memory.remove(memory.id):
+            try:
+                # 修改目标类型和重要性
                 memory.memory_type = to_type
-                memory.importance *= 1.1  # 提升重要性
-                target_memory.add(memory)
-                consolidated_count += 1
-
+                memory.importance = min(1.0, memory.importance * 1.1)  # 提升重要性，上限1.0
+                
+                # 先添加到目标类型，成功后再删除源类型
+                added_id = target_memory.add(memory)
+                
+                if added_id:
+                    # 添加成功，删除源记忆
+                    if not source_memory.remove(memory.id):
+                        # 删除失败，记录但继续处理下一条
+                        logger.warning(f"删除源记忆失败（可能已过期）: {memory.id}")
+                    consolidated_count += 1
+                else:
+                    # 添加失败，记录失败的记忆
+                    failed_memories.append(memory.id)
+                    logger.error(f"添加记忆到目标类型失败: {memory.id}")
+                    
+            except Exception as e:
+                failed_memories.append(memory.id)
+                logger.error(f"记忆整合过程出错: {memory.id}, 错误: {e}")
+        
+        # 如果有失败的记忆，输出警告
+        if failed_memories:
+            logger.warning(f"记忆整合过程中有 {len(failed_memories)} 条记忆失败: {failed_memories}")
+        
         logger.info(f"记忆整合完成: {consolidated_count} 条记忆从 {from_type} 转移到 {to_type}")
         return consolidated_count
 
