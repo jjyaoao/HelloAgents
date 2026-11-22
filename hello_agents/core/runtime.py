@@ -254,6 +254,7 @@ async def turn_events(agent, messages, packets, *, stream, kwargs):
                         "id": call.id,
                         "type": "function",
                         "function": {"name": call.name, "arguments": call.arguments},
+                        **({"extra_content": call.extra_content} if call.extra_content else {}),
                     }
                     for call in calls
                 ],

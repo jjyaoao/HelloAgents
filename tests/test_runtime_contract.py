@@ -110,6 +110,20 @@ def test_all_entry_points_really_dispatch_tools_and_keep_pairs(cls, mode):
     )
 
 
+def test_tool_call_provider_metadata_reaches_next_model_request():
+    registry = ToolRegistry()
+    registry.register_function(lambda value: value, name="record")
+    extra = {"google": {"thought_signature": "c2lnbmF0dXJl"}}
+    llm = ScriptedLLM([
+        response(calls=[ToolCall("c1", "record", '{"value":"ok"}', extra)]),
+        response("done"),
+    ])
+    agent = SimpleAgent("test", llm, config=config(), tool_registry=registry)
+
+    assert agent.run("record") == "done"
+    assert llm.messages[1][-2]["tool_calls"][0]["extra_content"] == extra
+
+
 @pytest.mark.parametrize("mode", ["run", "arun", "stream_run", "arun_stream"])
 def test_errors_are_not_empty_success(mode):
     agent = SimpleAgent(

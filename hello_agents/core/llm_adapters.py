@@ -1,5 +1,6 @@
 """LLM适配器 - 支持OpenAI、Anthropic、Gemini等不同接口格式"""
 
+import base64
 import time
 import asyncio
 import json
@@ -746,10 +747,18 @@ class GeminiAdapter(BaseLLMAdapter):
                     if tool_call_id and tool_name:
                         tool_call_names[tool_call_id] = tool_name
 
-                    parts.append(genai_types.Part.from_function_call(
+                    part = genai_types.Part.from_function_call(
                         name=tool_name,
                         args=arguments,
-                    ))
+                    )
+                    signature = (
+                        (tool_call.get("extra_content") or {})
+                        .get("google", {})
+                        .get("thought_signature")
+                    )
+                    if signature:
+                        part.thought_signature = base64.b64decode(signature, validate=True)
+                    parts.append(part)
 
                 converted_messages.append(genai_types.Content(
                     role="model",
@@ -955,10 +964,13 @@ class GeminiAdapter(BaseLLMAdapter):
             if response.candidates:
                 for part in response.candidates[0].content.parts:
                     if hasattr(part, 'function_call') and part.function_call:
+                        signature = getattr(part, "thought_signature", None)
                         tool_calls.append(ToolCall(
                             id=f"call_{int(time.time()*1000)}",  # Gemini 没有显式的 call_id，生成一个
                             name=part.function_call.name,
-                            arguments=json.dumps(dict(part.function_call.args))
+                            arguments=json.dumps(dict(part.function_call.args)),
+                            extra_content={"google": {"thought_signature": base64.b64encode(signature).decode("ascii")}}
+                            if signature else None,
                         ))
 
             usage = {}

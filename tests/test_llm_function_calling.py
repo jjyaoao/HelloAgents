@@ -313,6 +313,36 @@ def test_gemini_converts_openai_tool_history_messages():
     assert converted[1].parts[0].function_response.response == {"result": "5"}
 
 
+def test_gemini_preserves_tool_call_thought_signature():
+    """Gemini 3 requires the function-call signature in the next request."""
+    pytest.importorskip("google.genai")
+    from google.genai import types as genai_types
+
+    signature = b"opaque-signature\x00\xff"
+    mock_client = MagicMock()
+    part = genai_types.Part.from_function_call(name="calculate", args={"expression": "2+3"})
+    part.thought_signature = signature
+    mock_client.models.generate_content.return_value = SimpleNamespace(
+        text=None,
+        candidates=[SimpleNamespace(content=SimpleNamespace(parts=[part]), finish_reason="STOP")],
+        usage_metadata=None,
+    )
+    adapter = GeminiAdapter("test-key", "https://generativelanguage.googleapis.com", 60, "gemini-test")
+    adapter._client = mock_client
+
+    response = adapter.invoke_with_tools([{"role": "user", "content": "calculate"}], _tool_schema())
+    call = response.tool_calls[0]
+    assert call.extra_content == {"google": {"thought_signature": "b3BhcXVlLXNpZ25hdHVyZQD/"}}
+
+    _, converted = adapter._convert_messages([{"role": "assistant", "content": None, "tool_calls": [{
+        "id": call.id,
+        "type": "function",
+        "function": {"name": call.name, "arguments": call.arguments},
+        "extra_content": call.extra_content,
+    }]}])
+    assert converted[0].parts[0].thought_signature == signature
+
+
 class TestLLMFunctionCallingIntegration:
     """集成测试 - 需要真实 LLM"""
 
