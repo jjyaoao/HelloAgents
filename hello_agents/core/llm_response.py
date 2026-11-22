@@ -10,6 +10,7 @@ class ToolCall:
     id: str
     name: str
     arguments: str
+    extra_content: Optional[Dict[str, Any]] = None
 
 
 @dataclass
