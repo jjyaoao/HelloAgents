@@ -48,7 +48,7 @@ class WorkingMemory(BaseMemory):
         priority = self._calculate_priority(memory_item)
         
         # 添加到堆中
-        heapq.heappush(self.memory_heap, (-priority, memory_item.timestamp, memory_item))
+        heapq.heappush(self.memory_heap, (-priority, memory_item.timestamp,  memory_item.id, memory_item))
         self.memories.append(memory_item)
         
         # 更新token计数
@@ -376,7 +376,7 @@ class WorkingMemory(BaseMemory):
         self.memory_heap = []
         for mem in self.memories:
             priority = self._calculate_priority(mem)
-            heapq.heappush(self.memory_heap, (-priority, mem.timestamp, mem))
+            heapq.heappush(self.memory_heap, (-priority, mem.timestamp,mem.id, mem))
     
     def _remove_lowest_priority_memory(self):
         """删除优先级最低的记忆"""
@@ -402,7 +402,7 @@ class WorkingMemory(BaseMemory):
         self.memory_heap = []
         for mem in self.memories:
             priority = self._calculate_priority(mem)
-            heapq.heappush(self.memory_heap, (-priority, mem.timestamp, mem))
+            heapq.heappush(self.memory_heap, (-priority, mem.timestamp, mem.id, mem))
     
     def _mark_deleted_in_heap(self, memory_id: str):
         """在堆中标记删除的记忆"""
