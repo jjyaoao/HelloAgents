@@ -193,9 +193,10 @@ class JobQueue:
                 return None
             if any(not isinstance(t, str) or not t for t in tasks):
                 raise ValueError("tasks must contain nonempty strings")
-        now = self.clock()
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            # 锁等待时间不应占用新租约，也不应忽略等待期间到期的任务。
+            now = self.clock()
             db.execute(
                 "UPDATE background_jobs SET status='failed',error='Lease expired after final attempt',"
                 "lease_token=NULL,lease_until=NULL,worker_id=NULL,updated_at=? "

@@ -1,8 +1,11 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing, contextmanager
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
+from threading import Event
 
 import pytest
 import hello_agents
@@ -45,6 +48,40 @@ def test_atomic_claim_competing_connections(tmp_path):
         leases = list(pool.map(claim, range(16)))
     ids = [lease.job.job_id for lease in leases if lease]
     assert len(ids) == len(set(ids)) == 10
+
+
+@pytest.mark.parametrize("delay", [0, 2])
+def test_claim_uses_time_after_waiting_for_write_lock(tmp_path, monkeypatch, delay):
+    clock = Clock()
+    q = JobQueue(str(tmp_path / "jobs.db"), clock=clock)
+    job = q.submit("index", {}, delay=delay)
+    claim_started = Event()
+    connect = q._connect
+
+    def observe_statement(statement):
+        if statement == "BEGIN IMMEDIATE":
+            claim_started.set()
+
+    @contextmanager
+    def observe_claim():
+        with connect() as db:
+            db.set_trace_callback(observe_statement)
+            yield db
+
+    monkeypatch.setattr(q, "_connect", observe_claim)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with closing(sqlite3.connect(q.path)) as writer:
+            writer.execute("BEGIN IMMEDIATE")
+            pending = pool.submit(q.claim, "worker", lease_seconds=3)
+            assert claim_started.wait(timeout=5)
+            clock.value += 4
+            writer.commit()
+        lease = pending.result(timeout=5)
+
+    assert lease is not None
+    assert lease.job.job_id == job.job_id
+    assert lease.job.lease_until == clock.value + 3
+    assert q.complete(lease).status == "succeeded"
 
 
 def test_expired_lease_is_fenced_and_retry_budget_is_finite(tmp_path):
